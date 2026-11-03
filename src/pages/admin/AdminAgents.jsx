@@ -80,7 +80,15 @@ export default function AdminAgents() {
     }
   }
 
-  const supervisors = allRows.filter((r) => r.role === 'Supervisor' && r.active)
+  // APT-148: team leads also have people reporting to them, so they appear in
+  // the Reporting Supervisor/Team Lead list alongside supervisors. Supervisors
+  // are listed first so the common choice stays at the top.
+  const SUPERVISING_ROLES = ['Supervisor', 'Team Lead']
+  const supervisors = allRows
+    .filter((r) => SUPERVISING_ROLES.includes(r.role) && r.active)
+    .sort((a, b) =>
+      SUPERVISING_ROLES.indexOf(a.role) - SUPERVISING_ROLES.indexOf(b.role) ||
+      (a.agent_name ?? '').localeCompare(b.agent_name ?? ''))
 
   const displayRows = allRows.filter((r) => {
     if (activeFilter === 'active' && !r.active) return false
@@ -204,15 +212,15 @@ export default function AdminAgents() {
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 12 }}>
-            <label className="form-label">Reporting Supervisor</label>
+            <label className="form-label">Reporting Supervisor/Team Lead</label>
             <select
               className="form-select"
               value={editing.supervisor_id ?? ''}
               onChange={(e) => setEditing({ ...editing, supervisor_id: e.target.value ? Number(e.target.value) : null })}
             >
-              <option value="">— Select supervisor —</option>
+              <option value="">— Select supervisor or team lead —</option>
               {supervisors.map((s) => (
-                <option key={s.id} value={s.id}>{s.agent_name}</option>
+                <option key={s.id} value={s.id}>{s.agent_name} ({s.role})</option>
               ))}
             </select>
           </div>

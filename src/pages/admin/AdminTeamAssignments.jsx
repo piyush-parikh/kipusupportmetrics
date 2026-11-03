@@ -120,16 +120,18 @@ export default function AdminTeamAssignments() {
           </select>
         </div>
         <div className="filter-group">
-          <label className="filter-label">Reporting Supervisor</label>
+          <label className="filter-label">Reporting Supervisor/Team Lead</label>
           <select
             className="filter-select"
-            style={{ minWidth: 170 }}
+            style={{ minWidth: 200 }}
             value={supervisorFilter}
             onChange={(e) => setSupervisorFilter(e.target.value)}
           >
-            <option value="">All Supervisors</option>
-            {supervisorOptions.list.map((s) => <option key={s.id} value={s.id}>{s.agent_name}</option>)}
-            {supervisorOptions.anyUnset && <option value="none">— No supervisor set —</option>}
+            <option value="">All Supervisors/Team Leads</option>
+            {supervisorOptions.list.map((s) => (
+              <option key={s.id} value={s.id}>{s.agent_name}{s.role ? ` (${s.role})` : ''}</option>
+            ))}
+            {supervisorOptions.anyUnset && <option value="none">— Not set —</option>}
           </select>
         </div>
         <div style={{ marginLeft: 'auto' }}>
@@ -145,7 +147,7 @@ export default function AdminTeamAssignments() {
             <thead>
               <tr>
                 <th>Agent</th>
-                <th>Reporting Supervisor</th>
+                <th>Reporting Supervisor/Team Lead</th>
                 <th>Team</th>
                 <th>Start Date <span style={{ fontWeight: 400, color: '#9ca3af' }}>(MM/DD/YYYY)</span></th>
                 <th>End Date <span style={{ fontWeight: 400, color: '#9ca3af' }}>(MM/DD/YYYY)</span></th>

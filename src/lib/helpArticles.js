@@ -566,7 +566,7 @@ export const ARTICLES = [
         rows: [
           ['Agent Name', 'The person\'s name as it appears throughout the tool.'],
           ['Role', 'Their role: Support Specialist, PSA, Client Advocate Tier I, Client Advocate Tier II, Team Lead, Supervisor, Manager, Trainer, or Other.'],
-          ['Reporting Supervisor', 'Who this agent reports to. The list is drawn from people whose role is Supervisor.'],
+          ['Reporting Supervisor/Team Lead', 'Who this agent reports to. The list is drawn from active people whose role is Supervisor or Team Lead, with supervisors shown first and each name followed by its role. Setting this is what makes the agent appear under that person in the Reporting Supervisor/Team Lead filter on Team Assignments.'],
           ['Hire Date', 'When the agent was hired.'],
           ['Go-Live Date', 'When the agent started taking live work (used so brand-new agents are not judged on ramp-up time).'],
           ['Employment End Date', 'Their last day, if known. See below — this auto-deactivates the agent when the date passes.'],
@@ -1000,7 +1000,7 @@ export const HELP_SCREENSHOTS = [
   { id: 'HELP-023', article: 'How to Use the Attendance Page', shows: 'The bulk action buttons', highlight: 'Point to the red "Clear Selected Cells" button' },
   { id: 'HELP-024', article: 'How to Manage Agents', shows: 'The Agents list page', highlight: 'Highlight the Search box and Status filter' },
   { id: 'HELP-025', article: 'How to Manage Agents', shows: 'Top-right of the Agents page', highlight: 'Point to the "+ Add Agent" button' },
-  { id: 'HELP-026', article: 'How to Manage Agents', shows: 'The agent profile pop-up (open it)', highlight: 'Show all fields: Name, Role, Reporting Supervisor, Hire Date, Go-Live Date, Employment End Date, Notes, Active' },
+  { id: 'HELP-026', article: 'How to Manage Agents', shows: 'The agent profile pop-up (open it)', highlight: 'Show all fields: Name, Role, Reporting Supervisor/Team Lead, Hire Date, Go-Live Date, Employment End Date, Notes, Active' },
   { id: 'HELP-027', article: 'How to Manage Agents', shows: 'The agent profile pop-up', highlight: 'Point specifically to the Employment End Date field and its helper text' },
   { id: 'HELP-028', article: 'How to Manage Agents', shows: 'Bottom of a saved agent profile', highlight: 'Highlight the Team Assignments section with Add Team / Add' },
   { id: 'HELP-029', article: 'How to Use Supervisor Notes', shows: 'The Supervisor Note card on the Agent Performance page', highlight: 'Show the full note card including the text area, Supervisor dropdown, and Save Note button' },
