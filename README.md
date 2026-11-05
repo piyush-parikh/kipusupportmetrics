@@ -14,7 +14,7 @@ A production React app for tracking support agent performance against AB's sprea
 | **Attendance Entry** | Weekday grid for entering daily attendance codes per agent |
 | **Admin Settings** | Full CRUD for organizations, groups, agents, metrics, targets, tolerances, and attendance codes |
 
-Ratings and on-track status are calculated in Supabase views — the frontend only displays them.
+Ratings and on-track status used to be calculated in Supabase views, but since APT-136/137/138 the app works them out itself from the rounded figures it displays (`computeRating` in `src/lib/format.js`, `deriveStatus` in `AgentPerformance.jsx` and `LeaderDashboard.jsx`). The views still compute their own versions, which the app overrides — worth knowing when numbers disagree.
 
 ---
 

@@ -16,6 +16,76 @@
 export const ARTICLES = [
   // ─────────────────────────────────────────────────────────────────────────
   {
+    id: 'signing-in',
+    title: 'Signing In and Access',
+    category: 'Daily Use',
+    summary:
+      'How to sign in, what the two kinds of account can do, and who to ask when you need access or a new password.',
+    blocks: [
+      { type: 'h2', text: 'Signing in' },
+      {
+        type: 'p',
+        text:
+          'The tracker now asks you to sign in. Enter the **email address** your account was set up with and your **password**, then click **Sign in**. You stay signed in on that browser, so you will not be asked again every time.',
+      },
+      {
+        type: 'p',
+        text:
+          'Once you are in, the bottom of the left-hand menu shows the email you signed in with and whether you are an **Admin** or a **User**. The **Sign out** button is in the same place.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          'Accounts are created for you — there is no "create an account" option, and no "forgot password" email. If you need an account, a password reset, or you have changed email address, ask an administrator.',
+      },
+
+      { type: 'h2', text: 'The two kinds of account' },
+      {
+        type: 'p',
+        text:
+          'Everyone sees the same menu. The difference is what you can change.',
+      },
+      {
+        type: 'table',
+        headers: ['Section', 'Admin', 'User'],
+        rows: [
+          ['Agent Performance, Team Dashboard', 'Full use', 'Full use'],
+          ['Attendance Summary, Attendance Entry, Attendance Codes', 'Full use', 'Full use'],
+          ['Supervisor Notes', 'Full use', 'Full use'],
+          ['Agents, Teams, Team Assignments', 'Can add and edit', 'Can look, cannot change'],
+          ['Metrics, Goals', 'Can add and edit', 'Can look, cannot change'],
+          ['Help & Playbook', 'Full use', 'Full use'],
+        ],
+      },
+      {
+        type: 'p',
+        text:
+          'On the pages a User cannot change, the buttons are simply not there and a short note at the top says **"View only. Ask an administrator to make changes."** Everything on those pages can still be read, searched and filtered as normal.',
+      },
+
+      { type: 'h2', text: 'If something is not right' },
+      {
+        type: 'list',
+        items: [
+          '**"Email or password is incorrect."** — check the email address, then ask an administrator to reset your password. For your security the tool will not say whether an email address exists.',
+          '**"No access"** after signing in — your account exists but has not been given access yet. Contact an administrator.',
+          '**"Could not load your access"** — usually a connection problem rather than anything to do with your account. Click **Retry**; if it keeps happening, sign out and back in.',
+          '**"Your sign-in has expired."** — you have been signed out after a long idle period. Sign in again and carry on.',
+          '**"You do not have permission to do this."** — you tried something your account cannot do. Ask an administrator.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'tip',
+        text:
+          'Signing out in one browser tab signs you out in the others too. If you share a computer, sign out when you are finished.',
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
     id: 'goals',
     title: 'How to Use the Goals Section',
     category: 'Setup',

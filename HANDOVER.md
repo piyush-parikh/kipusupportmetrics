@@ -32,7 +32,7 @@ data source** — most numbers are produced elsewhere and loaded in.
 | Backend | **None of our own.** The browser talks to the database directly |
 | Database | Supabase (hosted PostgreSQL) |
 | Hosting | Vercel, auto-deploys from GitHub |
-| Auth | **None — see Gotchas** |
+| Auth | Supabase email + password, two roles from `public.app_users` (staging; see Gotchas) |
 | Notable library | `xlsx` — now unused leftover (see Gotchas) |
 
 **There is no AI in the product.** Metrics named "% AI Suggestions Accepted" measure
@@ -140,11 +140,29 @@ publish to `main` → mark `[✅]`. Counts as of this writing: **14 not started,
 
 ### Significant
 
-1. **No login. At all.** A search of the codebase found zero authentication code. Anyone
-   with the URL can view every agent's performance data *and edit it* — including
-   attendance, goals and notes. For a tool holding individual performance records this is
-   the thing to escalate first. ⚠️ It is unknown whether this is mitigated at the network
-   level (VPN/SSO in front of Vercel) — **verify**.
+1. **Login exists on staging, but the database is not locked yet (APT-149, Nov 2026).**
+   Until November 2026 there was no authentication of any kind. Sign-in is now built and
+   on **staging**: email + password at `/login`, accounts created by an administrator in
+   the Supabase dashboard (no sign-up, no reset email, no magic link), and two roles read
+   from `public.app_users`:
+   - **Admin** — the whole app, exactly as it always behaved.
+   - **User** — full use of Agent Performance, Team Dashboard, all three Attendance
+     screens, Supervisor Notes and Help; **view only** on Agents, Teams, Team
+     Assignments, Metrics and Goals.
+
+   ⚠️ **The database lock (row-level security) is NOT applied.** That is a separate step,
+   planned for after this is live. Until then the view-only rule is enforced **in the
+   screens only** — the anon key still ships inside the browser bundle, so anyone who can
+   reach the site and knows how to call the database directly can still write. Treat
+   view-only as preventing mistakes, not as a security boundary, until the lock is on.
+
+   The app is written ready for that switch: one Supabase client, created with
+   `persistSession` and `autoRefreshToken`, so every query carries the signed-in session
+   for the database to judge. Refusals already surface as "You do not have permission to
+   do this." rather than a raw database message.
+
+   ⚠️ It is still unknown whether anything restricts network access to the live site
+   (VPN/SSO in front of Vercel) — **verify**.
 2. **Staging and live share a database.** "Test on staging" only isolates *code*, never
    data.
 3. **The metric load is undocumented, runs outside this project, and has stopped.**
@@ -211,7 +229,7 @@ metric load and who owns it — neither is documented anywhere.
 
 **Verify these three things early:**
 
-1. Is there any access control in front of the live site? (Gotcha #1)
+1. Is there any access control in front of the live site, and has the database lock been switched on since this was written? (Gotcha #1)
 2. Is row-level security enabled in Supabase? (Section 6)
 3. What tool runs the metric load, who owns it, and how does a new agent get included? (Gotcha #3)
 
@@ -231,7 +249,7 @@ they're quick wins.
 
 Two things could not be determined from the codebase and should not be assumed:
 
-- **Whether anything restricts access to the live site** (Gotcha #1)
+- **Whether anything restricts access to the live site** (Gotcha #1). Note sign-in now exists on staging, but the database lock behind it is not applied yet.
 - **What tool runs the metric load, who owns it, on what trigger, and how it obtains an
   agent's `agent_id`** (Gotcha #3) — the app holds no external identifier to match on,
   and nothing has loaded since 22-Sept-2026. Chad may know how it was set up.
