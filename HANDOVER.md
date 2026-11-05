@@ -147,8 +147,9 @@ publish to `main` → mark `[✅]`. Counts as of this writing: **14 not started,
    from `public.app_users`:
    - **Admin** — the whole app, exactly as it always behaved.
    - **User** — full use of Agent Performance, Team Dashboard, all three Attendance
-     screens, Supervisor Notes and Help; **view only** on Agents, Teams, Team
-     Assignments, Metrics and Goals.
+     screens, Notes and Help; **view only** on Agents, Teams, Team Assignments, Metrics
+     and Goals. Their written notes are private to them (Gotcha #6); metric adjustments
+     are shared.
 
    ⚠️ **The database lock (row-level security) is NOT applied.** That is a separate step,
    planned for after this is live. Until then the view-only rule is enforced **in the
@@ -195,9 +196,26 @@ publish to `main` → mark `[✅]`. Counts as of this writing: **14 not started,
 
 ### Smaller
 
-6. Metric adjustments (custom goals/exclusions) are stored **inside the supervisor note
-   text** behind a `[[ADJUSTMENTS]]` marker, not their own table. It works, but it's
-   unusual — don't hand-edit notes in the database.
+6. **Notes and adjustments each have their own table now (APT-151, staging).**
+   - **`metrics_agent_notes`** — one row per agent, month **and author**, so two people
+     coaching the same agent in the same month no longer overwrite one another. A note
+     is **private to its author**: a User reads and writes only their own rows, an Admin
+     all of them. Emptying a note deletes the row rather than storing a blank.
+   - **`metrics_agent_month_adjustments`** — one row per agent, month and metric.
+     Deliberately **shared**: everyone with a role may read and change them, because an
+     adjustment changes the rating everyone reads.
+   - Notes **copied over from the old table** have no account behind them
+     (`author_user` is null) and carry `author_name` instead. They are visible to Admins
+     only, shown as "(not linked to an account)", until an Admin links them to an
+     account.
+   - ⚠️ Those privacy rules are **database rules that are not applied yet** — see
+     Gotcha #1. Until the lock is on, the app enforces them in the screens only.
+   - The old **`metrics_agent_monthly_notes`** (one row per agent-month, with
+     adjustments packed into the note text behind an `[[ADJUSTMENTS]]` marker) becomes a
+     **read-only Admin archive** once the lock is applied. The app no longer reads or
+     writes it. `src/lib/adjustments.js` and the three legacy functions in `api.js` are
+     kept, unused, as a record of that old format — don't delete them until the archive
+     is retired.
 7. Rating bands change behaviour at **July 2026** (`NEW_RATING_BANDS_FROM`). Same
    performance reads a band higher from that month on.
 8. **No tests whatsoever.** Verification is manual, via staging. `npm run lint` has

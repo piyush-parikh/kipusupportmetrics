@@ -693,18 +693,24 @@ export const ARTICLES = [
     title: 'How to Use Supervisor Notes',
     category: 'Daily Use',
     summary:
-      'Record a coaching note during a 1:1, hide it while screen-sharing with the agent, and manage all notes across the team from the Admin Notes section.',
+      'Record a coaching note during a 1:1, hide it while screen-sharing with the agent, and understand who else can read it.',
     blocks: [
       { type: 'h2', text: 'What supervisor notes are for' },
       {
         type: 'p',
         text:
-          'A **supervisor note** is a private coaching record attached to a specific agent and month. It lets the supervisor capture what was discussed, any action items, or observed patterns — right alongside the scorecard — without the agent seeing it during the review.',
+          'A **supervisor note** is a coaching record attached to a specific agent and month. It lets you capture what was discussed, any action items, or observed patterns — right alongside the scorecard — without the agent seeing it during the review.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          '**Your note is your own.** Only you and an Administrator can read what you write. Other people writing about the same agent and the same month keep their own separate notes, and nobody overwrites anybody.',
       },
       {
         type: 'p',
         text:
-          'Notes are written in the **Agent Performance** page during (or after) the 1:1. They can also be added, edited, or browsed in bulk from the **Admin Notes** section (Metric Setup → Notes).',
+          'Notes are written in the **Agent Performance** page during (or after) the 1:1. You can also see and edit all of your own notes in one place from **Metric Setup → Notes**. An Administrator sees everyone\'s there.',
       },
 
       { type: 'h2', text: 'Writing a note during a 1:1' },
@@ -1036,7 +1042,7 @@ export const ARTICLES = [
         items: [
           'Adjustments apply **one month at a time** — for a 90-day PIP, set the custom goal on each of the three months.',
           'Adjustments currently affect the **Monthly view** and that month\'s rating. The Quarterly / Half-Year / YTD tabs don\'t reflect them yet (planned as APT-128).',
-          'Behind the scenes the adjustment is stored with that agent\'s monthly note, so it travels with the month it belongs to.',
+          'Adjustments are **shared, not private**. Unlike a note, everyone who can see this agent sees the adjustment, who made it and why — and everyone sees the same rating as a result.',
         ],
       },
     ],
