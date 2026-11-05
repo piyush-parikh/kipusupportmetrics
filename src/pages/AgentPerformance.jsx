@@ -11,6 +11,7 @@ import {
 import { formatValue, statusLabel, statusClass, ratingClass, ratingIcon, computeRating } from '../lib/format'
 import Modal from '../components/Modal'
 import { rowsToAdjustments, adjustmentToRow } from '../lib/adjustmentRows'
+import { toMonthKey } from '../lib/dates'
 import { useAuth } from '../lib/useAuth'
 import { toMessage } from '../lib/errors'
 
@@ -481,18 +482,27 @@ export default function AgentPerformance() {
   useEffect(() => {
     if (!isAdmin || !agentId) { setOtherNotes([]); return undefined }
     let active = true
-    const monthKey = `${year}-${selMonth}-01`
+    // APT-153: compare month to month, so this does not depend on the stored
+    // date happening to be the first of the month
+    const monthKey = `${year}-${selMonth}`
     Promise.all([getAllNotesVisible(), getAppUsers()])
       .then(([notes, users]) => {
         if (!active) return
         setOtherNotes((notes ?? []).filter((n) =>
           String(n.agent_id) === String(agentId) &&
-          String(n.metric_month).slice(0, 10) === monthKey &&
+          toMonthKey(n.metric_month) === monthKey &&
           n.author_user !== myUserId
         ))
         setAppUsers(users ?? [])
       })
-      .catch(() => { if (active) { setOtherNotes([]); setAppUsers([]) } })
+      .catch((e) => {
+        // Was swallowed, which left an Admin unable to tell "nobody else has
+        // written" from "this failed to load"
+        if (!active) return
+        setOtherNotes([])
+        setAppUsers([])
+        setError(toMessage(e))
+      })
     return () => { active = false }
   }, [isAdmin, agentId, year, selMonth, myUserId])
 

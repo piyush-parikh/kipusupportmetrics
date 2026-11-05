@@ -7,6 +7,7 @@ import {
 import Modal from '../../components/Modal'
 import { recentMonths } from '../../lib/format'
 import { describeAdjustmentRow } from '../../lib/adjustmentRows'
+import { toMonthKey } from '../../lib/dates'
 import { useAuth } from '../../lib/useAuth'
 import { toMessage } from '../../lib/errors'
 
@@ -84,7 +85,7 @@ export default function AdminNotes() {
   // the page's own Agent and Month filters are applied here.
   const visibleNotes = useMemo(() => notes.filter((n) => {
     if (agentFilter && String(n.agent_id) !== String(agentFilter)) return false
-    if (monthFilter && String(n.metric_month).slice(0, 7) !== monthFilter) return false
+    if (monthFilter && toMonthKey(n.metric_month) !== monthFilter) return false
     return true
   }), [notes, agentFilter, monthFilter])
 
@@ -138,7 +139,7 @@ export default function AdminNotes() {
   const adjustmentRows = useMemo(() => adjRows.map((r) => ({
     key: r.id,
     agent: r.metrics_agents?.agent_name ?? r.agent_id,
-    month: String(r.metric_month).slice(0, 7),
+    month: toMonthKey(r.metric_month),
     metric: metricNames[r.metric_key] ?? r.metric_key,
     change: describeAdjustmentRow(r),
     reason: r.reason || '—',
@@ -202,7 +203,7 @@ export default function AdminNotes() {
                 {visibleNotes.map((n) => (
                   <tr key={n.id}>
                     <td style={{ fontWeight: 500 }}>{n.metrics_agents?.agent_name ?? n.agent_id}</td>
-                    <td style={{ fontSize: 12 }}>{String(n.metric_month).slice(0, 7)}</td>
+                    <td style={{ fontSize: 12 }}>{toMonthKey(n.metric_month)}</td>
                     <td style={{ fontSize: 12, maxWidth: 400, whiteSpace: 'pre-wrap' }}>{n.note_text}</td>
                     <td style={{ fontSize: 12, color: '#6b7a8d' }}>{authorLabel(n, usersById)}</td>
                     <td style={{ fontSize: 12, color: '#6b7a8d' }}>{formatWhen(n.updated_at ?? n.created_at)}</td>
