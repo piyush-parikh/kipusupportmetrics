@@ -1,14 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  getTeams, getAgents, getAllAgents,
+  getTeams, getAgents,
   getAllMetricDefinitions, getScorecard, getScorecardYear,
-  getAgentMonthNote, upsertAgentMonthNote, getActiveGoals,
+  getMyNote, upsertMyNote, getActiveGoals,
   getAgentTeamAssignments,
+  getAdjustments, upsertAdjustment, deleteAdjustment,
+  getAllNotesVisible, getAppUsers,
 } from '../lib/api'
 import { formatValue, statusLabel, statusClass, ratingClass, ratingIcon, computeRating } from '../lib/format'
 import Modal from '../components/Modal'
-import { parseNoteAdjustments, serializeNoteWithAdjustments } from '../lib/adjustments'
+import { rowsToAdjustments, adjustmentToRow } from '../lib/adjustmentRows'
+import { useAuth } from '../lib/useAuth'
 import { toMessage } from '../lib/errors'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -64,6 +67,15 @@ function computePeriodActual(rows, unitType) {
 // Uses direction_good values: 'at_or_above' | 'at_or_below'
 // APT-136: values display as whole numbers (APT-129), so compare on the rounded
 // figures too — otherwise a raw 94.6 shows as "95% vs 95%" yet reads Off Track.
+// APT-151: how a note's author is shown. Notes copied from the old table have
+// no account behind them until an Admin links one, so say so plainly.
+function noteAuthorLabel(note, appUsers) {
+  if (note?.author_name) return note.author_name
+  const match = (appUsers ?? []).find((u) => u.user_id === note?.author_user)
+  if (match?.email) return match.email
+  return '(not linked to an account)'
+}
+
 function deriveStatus(actual, refRow) {
   if (actual == null || !refRow) return 'no_data'
   const { goal_value, tolerance_value, direction_good } = refRow
@@ -209,13 +221,12 @@ function MetricRow({ row, onAdjust }) {
 }
 
 // APT-88: Pop-up for excluding a metric or setting a custom goal for one agent+month
-function AdjustModal({ row, supervisors, defaultBy, saving, onSave, onRemove, onClose }) {
+function AdjustModal({ row, byName, saving, onSave, onRemove, onClose }) {
   const existing = row.adjustment
   const [mode, setMode] = useState(existing?.exclude ? 'exclude' : 'goal')
   const [goal, setGoal] = useState(existing?.goal ?? row.goal_value ?? '')
   const [tolerance, setTolerance] = useState(existing?.tolerance ?? row.tolerance_value ?? '')
   const [reason, setReason] = useState(existing?.reason ?? '')
-  const [by, setBy] = useState(existing?.by ?? defaultBy ?? '')
   const canSave = reason.trim() !== '' && (mode === 'exclude' || goal !== '')
   return (
     <Modal
@@ -238,7 +249,7 @@ function AdjustModal({ row, supervisors, defaultBy, saving, onSave, onRemove, on
                 ? { exclude: true }
                 : { goal: Number(goal), ...(tolerance !== '' ? { tolerance: Number(tolerance) } : {}) }),
               reason: reason.replace(/[|\n\r]+/g, ' ').trim(),
-              by: by || undefined,
+              by: byName || undefined,
             })}
           >
             {saving ? 'Saving…' : 'Save Adjustment'}
@@ -273,14 +284,11 @@ function AdjustModal({ row, supervisors, defaultBy, saving, onSave, onRemove, on
         <textarea className="form-input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={mode === 'exclude' ? 'e.g. CSAT ticket not agent’s fault' : 'e.g. 90-day new hire ramp goal'} />
       </div>
       <div className="form-group">
-        <label className="form-label">Adjusted By</label>
-        <select className="form-select" value={by} onChange={(e) => setBy(e.target.value)}>
-          <option value="">— Select supervisor —</option>
-          {supervisors.map((s) => <option key={s.id} value={s.agent_name}>{s.agent_name}</option>)}
-        </select>
+        <label className="form-label">Adjusted by</label>
+        <div style={{ fontSize: 13, color: '#4a5568' }}>{byName || '—'}</div>
       </div>
       <p style={{ fontSize: 11, color: '#6b7a8d', marginTop: 4 }}>
-        The adjustment is recorded in this agent&apos;s monthly supervisor note and only affects this agent for {row.metric_month ? String(row.metric_month).slice(0, 7) : 'this month'}.
+        This affects only this agent for {row.metric_month ? String(row.metric_month).slice(0, 7) : 'this month'}. Everyone who can see this agent sees the adjustment and the same rating.
       </p>
     </Modal>
   )
@@ -383,11 +391,12 @@ export default function AgentPerformance() {
   const [savedNote, setSavedNote]     = useState('')
   const [noteSaving, setNoteSaving]   = useState(false)
   const [noteMsg, setNoteMsg]         = useState('')
-  const [noteCreatedAt, setNoteCreatedAt] = useState(null)
-  const [noteCreatedBy, setNoteCreatedBy] = useState(null)
-  const [noteSupervisor, setNoteSupervisor] = useState(() => { try { return localStorage.getItem('ktp_ap_supervisor') || '' } catch { return '' } })
-  const [supervisors, setSupervisors] = useState([])
+  const [noteUpdatedAt, setNoteUpdatedAt] = useState(null)
   const [notesVisible, setNotesVisible] = useState(true)
+  // APT-151: an Admin can see that other people have written notes for the
+  // same agent and month. A User never sees anyone else's.
+  const [otherNotes, setOtherNotes] = useState([])
+  const [appUsers, setAppUsers] = useState([])
 
   // APT-135: Team assignments for the selected agent (role/tenure come from the agent row)
   const [agentTeams, setAgentTeams] = useState([])
@@ -396,6 +405,10 @@ export default function AgentPerformance() {
   const [adjustments, setAdjustments] = useState({})
   const [adjustRow, setAdjustRow] = useState(null)
   const [adjustSaving, setAdjustSaving] = useState(false)
+
+  // APT-151: a note belongs to whoever is signed in; there is no dropdown
+  const { user, email: myEmail, isAdmin } = useAuth()
+  const myUserId = user?.id ?? null
 
   const [loading, setLoading]         = useState(false)
   const [yearLoading, setYearLoading] = useState(false)
@@ -412,7 +425,6 @@ export default function AgentPerformance() {
   useEffect(() => {
     getTeams().then(setTeams).catch((e) => setError(toMessage(e)))
     getAllMetricDefinitions().then(setAllDefs).catch((e) => setError(toMessage(e)))
-    getAllAgents().then((all) => setSupervisors(all.filter((a) => a.role === 'Supervisor' && a.active))).catch(() => {})
   }, [])
 
   // APT-65: Derive active metricDefs and inactiveKeys
@@ -448,21 +460,41 @@ export default function AgentPerformance() {
     setError('')
     Promise.all([
       getScorecard({ agentId: Number(agentId), month: monthKey }),
-      getAgentMonthNote({ agentId: Number(agentId), noteMonth: monthKey }),
+      getMyNote(Number(agentId), monthKey, myUserId),
       teamId ? getActiveGoals({ groupId: teamId, month: monthKey }) : Promise.resolve([]),
+      getAdjustments(Number(agentId), monthKey),
     ])
-      .then(([sc, noteRow, histGoals]) => {
+      .then(([sc, noteRow, histGoals, adjRows]) => {
         setMonthDetail(applyHistoricalGoals(sc, histGoals))
-        const { cleanNote, adjustments: adj } = parseNoteAdjustments(noteRow?.note_text ?? '')
-        setNote(cleanNote)
-        setSavedNote(cleanNote)
-        setAdjustments(adj)
-        setNoteCreatedAt(noteRow?.created_at ?? null)
-        setNoteCreatedBy(noteRow?.created_by ?? null)
+        setNote(noteRow?.note_text ?? '')
+        setSavedNote(noteRow?.note_text ?? '')
+        setAdjustments(rowsToAdjustments(adjRows))
+        setNoteUpdatedAt(noteRow?.updated_at ?? noteRow?.created_at ?? null)
       })
       .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
-  }, [agentId, year, selMonth, teamId])
+  }, [agentId, year, selMonth, teamId, myUserId])
+
+  // APT-151: an Admin also sees who else has written for this agent and month.
+  // A User gets nothing back from the database for other people's notes, so
+  // this is not even requested for them.
+  useEffect(() => {
+    if (!isAdmin || !agentId) { setOtherNotes([]); return undefined }
+    let active = true
+    const monthKey = `${year}-${selMonth}-01`
+    Promise.all([getAllNotesVisible(), getAppUsers()])
+      .then(([notes, users]) => {
+        if (!active) return
+        setOtherNotes((notes ?? []).filter((n) =>
+          String(n.agent_id) === String(agentId) &&
+          String(n.metric_month).slice(0, 10) === monthKey &&
+          n.author_user !== myUserId
+        ))
+        setAppUsers(users ?? [])
+      })
+      .catch(() => { if (active) { setOtherNotes([]); setAppUsers([]) } })
+    return () => { active = false }
+  }, [isAdmin, agentId, year, selMonth, myUserId])
 
   // APT-135: Load the selected agent's team assignments for the context strip
   useEffect(() => {
@@ -487,38 +519,62 @@ export default function AgentPerformance() {
     setNoteSaving(true)
     setNoteMsg('')
     try {
-      await upsertAgentMonthNote({
+      const saved = await upsertMyNote({
         agentId: Number(agentId),
-        noteMonth: `${year}-${selMonth}`,
-        noteText: serializeNoteWithAdjustments(note, adjustments),
-        createdBy: noteSupervisor || null,
+        month: `${year}-${selMonth}`,
+        text: note,
+        userId: myUserId,
+        byName: myEmail || null,
       })
       setSavedNote(note)
-      setNoteCreatedBy(noteSupervisor || null)
-      setNoteMsg('Saved.')
-      if (!noteCreatedAt) setNoteCreatedAt(new Date().toISOString())
+      setNoteUpdatedAt(saved?.updated_at ?? saved?.created_at ?? null)
+      setNoteMsg(saved ? 'Saved.' : 'Note removed.')
       setTimeout(() => setNoteMsg(''), 3000)
     } catch (e) {
-      setNoteMsg('Error: ' + e.message)
+      setNoteMsg('Error: ' + toMessage(e))
     } finally {
       setNoteSaving(false)
     }
   }
 
-  // APT-88: Save or remove an adjustment — persists inside the monthly note
-  async function persistAdjustments(nextAdjustments) {
+  // APT-151: adjustments are rows of their own now, saved one metric at a
+  // time, and shared — so the page reloads them from the database afterwards
+  // rather than trusting local state.
+  async function reloadAdjustments() {
+    const rows = await getAdjustments(Number(agentId), `${year}-${selMonth}`)
+    setAdjustments(rowsToAdjustments(rows))
+  }
+
+  async function saveAdjustment(adj) {
     setAdjustSaving(true)
     try {
-      await upsertAgentMonthNote({
+      await upsertAdjustment(adjustmentToRow(adj, {
         agentId: Number(agentId),
-        noteMonth: `${year}-${selMonth}`,
-        noteText: serializeNoteWithAdjustments(note, nextAdjustments),
-        createdBy: noteSupervisor || noteCreatedBy || null,
-      })
-      setAdjustments(nextAdjustments)
+        month: `${year}-${selMonth}`,
+        userId: myUserId,
+        byName: myEmail || null,
+      }))
+      await reloadAdjustments()
       setAdjustRow(null)
     } catch (e) {
-      setError('Could not save the adjustment: ' + e.message)
+      setError('Could not save the adjustment: ' + toMessage(e))
+    } finally {
+      setAdjustSaving(false)
+    }
+  }
+
+  async function removeAdjustment(metricKey) {
+    setAdjustSaving(true)
+    try {
+      await deleteAdjustment({
+        agentId: Number(agentId),
+        month: `${year}-${selMonth}`,
+        metricKey,
+      })
+      await reloadAdjustments()
+      setAdjustRow(null)
+    } catch (e) {
+      setError('Could not remove the adjustment: ' + toMessage(e))
     } finally {
       setAdjustSaving(false)
     }
@@ -864,7 +920,7 @@ export default function AgentPerformance() {
           {/* APT-91: Supervisor Note with hide/show toggle */}
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: notesVisible ? 12 : 0 }}>
-              <div className="card-title" style={{ margin: 0 }}>Supervisor Note — {selectedMonthLabel} {year}</div>
+              <div className="card-title" style={{ margin: 0 }}>My Note — {selectedMonthLabel} {year}</div>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => setNotesVisible((v) => !v)}
@@ -875,26 +931,15 @@ export default function AgentPerformance() {
             </div>
             {notesVisible && (
               <>
-                <div className="form-group" style={{ marginBottom: 8 }}>
-                  <label className="form-label" style={{ fontSize: 11 }}>Supervisor</label>
-                  <select
-                    className="form-select"
-                    value={noteSupervisor}
-                    onChange={(e) => {
-                      setNoteSupervisor(e.target.value)
-                      try { localStorage.setItem('ktp_ap_supervisor', e.target.value) } catch {}
-                    }}
-                  >
-                    <option value="">— Select supervisor —</option>
-                    {supervisors.map((s) => <option key={s.id} value={s.agent_name}>{s.agent_name}</option>)}
-                  </select>
+                <div style={{ fontSize: 11, color: '#6b7a8d', marginBottom: 8 }}>
+                  Your private note. Only you and Administrators can see it.
                 </div>
                 <textarea
                   className="form-textarea"
                   style={{ width: '100%', marginBottom: 8 }}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Add a supervisor note for this agent and month…"
+                  placeholder="Add your note for this agent and month…"
                   rows={4}
                 />
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -911,10 +956,24 @@ export default function AgentPerformance() {
                     </span>
                   )}
                 </div>
-                {(noteCreatedAt || noteCreatedBy) && (
+                {noteUpdatedAt && (
                   <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
-                    {noteCreatedBy && <span>By: {noteCreatedBy}{noteCreatedAt ? ' · ' : ''}</span>}
-                    {noteCreatedAt && <span>Created: {new Date(noteCreatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+                    Last saved: {new Date(noteUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                )}
+
+                {/* APT-151: Admins can see that other people have written here too */}
+                {isAdmin && otherNotes.length > 0 && (
+                  <div style={{ marginTop: 14, borderTop: '1px solid #e2e6ea', paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>
+                      Other notes for this agent and month
+                    </div>
+                    {otherNotes.map((n) => (
+                      <div key={n.id} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: '#6b7a8d' }}>{noteAuthorLabel(n, appUsers)}</div>
+                        <div style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{n.note_text}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </>
@@ -927,16 +986,11 @@ export default function AgentPerformance() {
       {adjustRow && (
         <AdjustModal
           row={allRows.find((r) => r.metric_key === adjustRow.metric_key) ?? adjustRow}
-          supervisors={supervisors}
-          defaultBy={noteSupervisor}
+          byName={myEmail}
           saving={adjustSaving}
           onClose={() => setAdjustRow(null)}
-          onSave={(adj) => persistAdjustments({ ...adjustments, [adj.metric_key]: adj })}
-          onRemove={() => {
-            const next = { ...adjustments }
-            delete next[adjustRow.metric_key]
-            persistAdjustments(next)
-          }}
+          onSave={saveAdjustment}
+          onRemove={() => removeAdjustment(adjustRow.metric_key)}
         />
       )}
     </div>
