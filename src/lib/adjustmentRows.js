@@ -9,6 +9,8 @@
 // The page shape must not change: the rating code reads it as-is. Kept free of
 // React and database code so it can be tested on its own.
 
+import { monthToDate } from './dates.js'
+
 function numberOrNull(v) {
   if (v === null || v === undefined || v === '') return null
   const n = Number(v)
@@ -50,7 +52,8 @@ export function adjustmentToRow(adj, { agentId, month, userId, byName } = {}) {
   const exclude = !!adj?.exclude
   return {
     agent_id: Number(agentId),
-    metric_month: month,
+    // APT-153: the pages hold 'YYYY-MM'; metric_month is a date column
+    metric_month: monthToDate(month),
     metric_key: adj?.metric_key,
     exclude,
     goal: exclude ? null : numberOrNull(adj?.goal),
