@@ -1,7 +1,11 @@
 import { supabase } from './supabase'
 import { planGoalChange } from './goalPlan'
+import { monthToDate } from './dates'
 
-// Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres
+// Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres.
+// Lenient, and used by the older queries (scorecards, goals, attendance) where
+// a missing month means "no filter". The two new tables use monthToDate
+// instead, which refuses a month it cannot convert — see APT-153.
 function toDateParam(month) {
   if (!month) return undefined
   return month.length === 7 ? `${month}-01` : month
@@ -533,7 +537,7 @@ export async function getMyNote(agentId, month, userId) {
     .from('metrics_agent_notes')
     .select('*')
     .eq('agent_id', Number(agentId))
-    .eq('metric_month', toDateParam(month))
+    .eq('metric_month', monthToDate(month))
     .eq('author_user', userId)
     .maybeSingle()
   if (error) throw error
@@ -543,7 +547,7 @@ export async function getMyNote(agentId, month, userId) {
 // Writes my own note. Emptying the box removes the row rather than storing a
 // blank one, so "no note" and "an empty note" cannot drift apart.
 export async function upsertMyNote({ agentId, month, text, userId, byName }) {
-  const monthDate = toDateParam(month)
+  const monthDate = monthToDate(month)
   if (!String(text ?? '').trim()) {
     const { error } = await supabase
       .from('metrics_agent_notes')
@@ -600,7 +604,7 @@ export async function insertNoteForAuthor({ agentId, month, text, authorUserId, 
     .from('metrics_agent_notes')
     .insert({
       agent_id: Number(agentId),
-      metric_month: toDateParam(month),
+      metric_month: monthToDate(month),
       note_text: text,
       author_user: authorUserId ?? null,
       author_name: authorName ?? null,
@@ -640,7 +644,7 @@ export async function getAdjustments(agentId, month) {
     .from('metrics_agent_month_adjustments')
     .select('*')
     .eq('agent_id', Number(agentId))
-    .eq('metric_month', toDateParam(month))
+    .eq('metric_month', monthToDate(month))
   if (error) throw error
   return data ?? []
 }
@@ -653,16 +657,19 @@ export async function getAllAdjustments({ agentId, month } = {}) {
     .order('agent_id')
     .order('metric_key')
   if (agentId) query = query.eq('agent_id', Number(agentId))
-  if (month)   query = query.eq('metric_month', toDateParam(month))
+  if (month)   query = query.eq('metric_month', monthToDate(month))
   const { data, error } = await query
   if (error) throw error
   return data ?? []
 }
 
 export async function upsertAdjustment(row) {
+  // APT-153: normalised here as well as in adjustmentToRow, so any future
+  // caller that builds a row by hand cannot reintroduce the 'YYYY-MM' bug
+  const payload = { ...row, metric_month: monthToDate(row?.metric_month) }
   const { data, error } = await supabase
     .from('metrics_agent_month_adjustments')
-    .upsert(row, { onConflict: 'agent_id,metric_month,metric_key' })
+    .upsert(payload, { onConflict: 'agent_id,metric_month,metric_key' })
     .select()
     .single()
   if (error) throw error
@@ -674,7 +681,7 @@ export async function deleteAdjustment({ agentId, month, metricKey }) {
     .from('metrics_agent_month_adjustments')
     .delete()
     .eq('agent_id', Number(agentId))
-    .eq('metric_month', toDateParam(month))
+    .eq('metric_month', monthToDate(month))
     .eq('metric_key', metricKey)
   if (error) throw error
 }
