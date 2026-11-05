@@ -4,6 +4,7 @@ import {
   getAllMetricDefinitions, getScorecard, getScorecardYear, getSummary, getActiveGoals,
 } from '../lib/api'
 import { formatValue, statusClass, statusLabel, ratingClass, recentMonths, computeRating } from '../lib/format'
+import { toMessage } from '../lib/errors'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -210,7 +211,7 @@ export default function TeamDashboard() {
         const saved = loadPref('ktp_td_team', '')
         if (!saved && t.length > 0) setTeamId(String(t[0].id))
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
   }, [])
 
   // Load all agents with active assignments to this team, including those whose
@@ -219,7 +220,7 @@ export default function TeamDashboard() {
     if (!teamId) { setAgents([]); return }
     getAgents({ groupId: teamId, activeOnly: false })
       .then(setAgents)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
   }, [teamId])
 
   const agentIds = useMemo(() => agents.map((a) => a.id), [agents])
@@ -238,7 +239,7 @@ export default function TeamDashboard() {
         setMonthDetail(applyHistoricalGoals(det, histGoals))
         setSummaries(sumRows)
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }, [agentIds, month, teamId])
 
@@ -248,7 +249,7 @@ export default function TeamDashboard() {
     setYearLoading(true)
     getScorecardYear({ year: rollupYear, agentIds })
       .then(setYearDetail)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setYearLoading(false))
   }, [agentIds, rollupYear])
 

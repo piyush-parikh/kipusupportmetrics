@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAllTeams, upsertTeam, copyGoalsToTeam } from '../../lib/api'
 import Modal from '../../components/Modal'
 import { useAuth } from '../../lib/useAuth'
+import { toMessage } from '../../lib/errors'
 
 function todayISO() {
   const d = new Date()
@@ -25,7 +26,7 @@ export default function AdminTeams() {
     setLoading(true)
     getAllTeams()
       .then(setRows)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 
@@ -58,7 +59,7 @@ export default function AdminTeams() {
       setCopyFrom('')
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }

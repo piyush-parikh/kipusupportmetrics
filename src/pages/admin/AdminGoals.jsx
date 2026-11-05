@@ -8,6 +8,7 @@ import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
 import { shiftDay, runsOn, overlaps } from '../../lib/goalPlan'
 import { useAuth } from '../../lib/useAuth'
+import { toMessage } from '../../lib/errors'
 
 // APT-145: the Goals page is one grid — metrics down the side, teams across the
 // top — showing the goal each team is running today. Clicking a value opens the
@@ -43,7 +44,7 @@ export default function AdminGoals() {
     setLoading(true)
     Promise.all([getAllGroupGoals(), getAllTeams(), getAllMetricDefinitions()])
       .then(([g, t, m]) => { setGoals(g); setTeams(t); setMetrics(m) })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 
@@ -120,7 +121,7 @@ export default function AdminGoals() {
       setAdding(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }
@@ -176,7 +177,7 @@ export default function AdminGoals() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }
@@ -189,7 +190,7 @@ export default function AdminGoals() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     }
   }
 

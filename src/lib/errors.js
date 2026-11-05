@@ -5,6 +5,24 @@
 // sign-in has lapsed, so it can sign out and let the guard send the person
 // back to the login page.
 
+// The app registers a handler here once, from AuthProvider, so that a lapsed
+// sign-in signs out wherever it is noticed. Kept apart from describeError so
+// that stays pure and testable.
+let sessionExpiredHandler = null
+
+export function setSessionExpiredHandler(fn) {
+  sessionExpiredHandler = typeof fn === 'function' ? fn : null
+}
+
+// What the pages call: the message to show, plus the sign-out side effect when
+// the session has lapsed. One argument in, one string out — so a page's catch
+// stays a one-liner and needs no hook.
+export function toMessage(e) {
+  const { message, sessionExpired } = describeError(e)
+  if (sessionExpired && sessionExpiredHandler) sessionExpiredHandler()
+  return message
+}
+
 export function describeError(e) {
   if (!e) return { message: 'Something went wrong. Please try again.', sessionExpired: false }
 

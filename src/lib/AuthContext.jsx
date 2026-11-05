@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { getMyRole } from './api'
 import { describeAuthError } from './authHelpers'
-import { describeError } from './errors'
+import { describeError, setSessionExpiredHandler } from './errors'
 import { AuthCtx } from './useAuth'
 
 // APT-149: who is signed in, and what they are allowed to do.
@@ -99,6 +99,13 @@ export function AuthProvider({ children }) {
   const signOut = useCallback(() => supabase.auth.signOut().catch(() => {}), [])
 
   const refreshRole = useCallback(() => setRoleNonce((n) => n + 1), [])
+
+  // Any page that hits an expired sign-in signs out through this, and the
+  // guard then sends the person to /login.
+  useEffect(() => {
+    setSessionExpiredHandler(signOut)
+    return () => setSessionExpiredHandler(null)
+  }, [signOut])
 
   const value = useMemo(() => ({
     session,

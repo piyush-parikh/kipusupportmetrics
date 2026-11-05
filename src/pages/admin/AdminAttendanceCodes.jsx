@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getAllAttendanceCodes, upsertAttendanceCode } from '../../lib/api'
 import Modal from '../../components/Modal'
+import { toMessage } from '../../lib/errors'
 
 // Plain-English explanation of what the two counting switches do together
 function countingSummary(row) {
@@ -21,7 +22,7 @@ export default function AdminAttendanceCodes() {
     setLoading(true)
     getAllAttendanceCodes()
       .then(setRows)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 

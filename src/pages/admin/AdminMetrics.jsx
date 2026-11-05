@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAllMetricDefinitions, upsertMetricDefinition } from '../../lib/api'
 import Modal from '../../components/Modal'
 import { useAuth } from '../../lib/useAuth'
+import { toMessage } from '../../lib/errors'
 
 // APT-149: onEdit is absent for a non-admin, which also drops the Edit column
 function MetricSection({ title, rows, onEdit }) {
@@ -55,7 +56,7 @@ export default function AdminMetrics() {
     setLoading(true)
     getAllMetricDefinitions()
       .then(setRows)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 
@@ -68,7 +69,7 @@ export default function AdminMetrics() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }

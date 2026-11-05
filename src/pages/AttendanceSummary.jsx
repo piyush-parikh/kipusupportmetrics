@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getTeams, getAgents, getAllAgents, getAttendanceRollup } from '../lib/api'
 import { currentMonth, recentMonths } from '../lib/format'
+import { toMessage } from '../lib/errors'
 
 export default function AttendanceSummary() {
   const months = recentMonths(18)
@@ -13,7 +14,7 @@ export default function AttendanceSummary() {
   const [error, setError]     = useState('')
 
   useEffect(() => {
-    getTeams().then(setTeams).catch((e) => setError(e.message))
+    getTeams().then(setTeams).catch((e) => setError(toMessage(e)))
   }, [])
 
   const loadData = useCallback(async () => {
@@ -34,7 +35,7 @@ export default function AttendanceSummary() {
         .sort((a, b) => a.agent_name.localeCompare(b.agent_name))
       setRows(list)
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setLoading(false)
     }

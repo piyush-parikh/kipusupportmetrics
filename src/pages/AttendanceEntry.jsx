@@ -6,6 +6,7 @@ import {
 } from '../lib/api'
 
 import Modal from '../components/Modal'
+import { toMessage } from '../lib/errors'
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -215,14 +216,14 @@ export default function AttendanceEntry() {
   // ── Data loading ────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    getTeams().then(setTeams).catch((e) => setError(e.message))
-    getAttendanceCodes().then(setCodes).catch((e) => setError(e.message))
+    getTeams().then(setTeams).catch((e) => setError(toMessage(e)))
+    getAttendanceCodes().then(setCodes).catch((e) => setError(toMessage(e)))
   }, [])
 
   useEffect(() => {
     getAgents({ groupId: groupId || undefined, activeOnly: false })
       .then(setAgents)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
   }, [groupId])
 
   const loadAttendance = useCallback(async () => {
@@ -236,7 +237,7 @@ export default function AttendanceEntry() {
       setSavedMap(map)
       setPendingMap({})
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setLoading(false)
     }
@@ -382,7 +383,7 @@ export default function AttendanceEntry() {
       }
       await loadAttendance()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }

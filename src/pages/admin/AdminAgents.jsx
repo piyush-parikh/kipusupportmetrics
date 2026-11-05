@@ -5,6 +5,7 @@ import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
 import { useAuth } from '../../lib/useAuth'
+import { toMessage } from '../../lib/errors'
 
 export default function AdminAgents() {
   const { isAdmin } = useAuth()
@@ -42,7 +43,7 @@ export default function AdminAgents() {
         if (target) setEditing({ ...target })
       }
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setLoading(false)
     }
@@ -79,7 +80,7 @@ export default function AdminAgents() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }
@@ -336,7 +337,7 @@ export default function AdminAgents() {
                       setNewAssignTeamId('')
                       setNewAssignMonth('')
                     } catch (e) {
-                      setError(e.message)
+                      setError(toMessage(e))
                     }
                   }}
                   style={{ alignSelf: 'flex-end' }}

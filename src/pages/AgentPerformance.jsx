@@ -9,6 +9,7 @@ import {
 import { formatValue, statusLabel, statusClass, ratingClass, ratingIcon, computeRating } from '../lib/format'
 import Modal from '../components/Modal'
 import { parseNoteAdjustments, serializeNoteWithAdjustments } from '../lib/adjustments'
+import { toMessage } from '../lib/errors'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -409,8 +410,8 @@ export default function AgentPerformance() {
 
   // APT-65: Load all metric definitions (active + inactive)
   useEffect(() => {
-    getTeams().then(setTeams).catch((e) => setError(e.message))
-    getAllMetricDefinitions().then(setAllDefs).catch((e) => setError(e.message))
+    getTeams().then(setTeams).catch((e) => setError(toMessage(e)))
+    getAllMetricDefinitions().then(setAllDefs).catch((e) => setError(toMessage(e)))
     getAllAgents().then((all) => setSupervisors(all.filter((a) => a.role === 'Supervisor' && a.active))).catch(() => {})
   }, [])
 
@@ -436,7 +437,7 @@ export default function AgentPerformance() {
           savedAgentRef.current = ''
         }
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
   }, [teamId])
 
   // Load monthly data when agent / year / month / team changes
@@ -459,7 +460,7 @@ export default function AgentPerformance() {
         setNoteCreatedAt(noteRow?.created_at ?? null)
         setNoteCreatedBy(noteRow?.created_by ?? null)
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }, [agentId, year, selMonth, teamId])
 
@@ -477,7 +478,7 @@ export default function AgentPerformance() {
     setYearLoading(true)
     getScorecardYear({ agentId: Number(agentId), year })
       .then(setYearDetail)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setYearLoading(false))
   }, [agentId, year])
 

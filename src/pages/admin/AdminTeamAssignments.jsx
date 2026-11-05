@@ -4,6 +4,7 @@ import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
 import { useAuth } from '../../lib/useAuth'
+import { toMessage } from '../../lib/errors'
 
 // APT-147: who an agent reports to lives on the agent record (supervisor_id),
 // not on the assignment, so it is looked up per row. 'none' keeps agents with
@@ -31,7 +32,7 @@ export default function AdminTeamAssignments() {
     setLoading(true)
     Promise.all([getAllTeamAssignments(), getAllAgents(), getAllTeams()])
       .then(([r, a, t]) => { setRows(r); setAgents(a); setTeams(t) })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 
@@ -49,7 +50,7 @@ export default function AdminTeamAssignments() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }

@@ -3,6 +3,7 @@ import { getAllNotes, upsertAgentMonthNote, getAllAgents, getAllMetricDefinition
 import Modal from '../../components/Modal'
 import { recentMonths } from '../../lib/format'
 import { parseNoteAdjustments, serializeNoteWithAdjustments, describeAdjustment } from '../../lib/adjustments'
+import { toMessage } from '../../lib/errors'
 
 export default function AdminNotes() {
   const months = recentMonths(18)
@@ -35,7 +36,7 @@ export default function AdminNotes() {
       getAllAgents(),
     ])
       .then(([n, a]) => { setRows(n); setAgents(a) })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
 
@@ -55,7 +56,7 @@ export default function AdminNotes() {
       setEditing(null)
       load()
     } catch (e) {
-      setError(e.message)
+      setError(toMessage(e))
     } finally {
       setSaving(false)
     }
