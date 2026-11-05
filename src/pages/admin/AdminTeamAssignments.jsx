@@ -3,6 +3,7 @@ import { getAllTeamAssignments, upsertTeamAssignment, getAllAgents, getAllTeams 
 import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
+import { useAuth } from '../../lib/useAuth'
 
 // APT-147: who an agent reports to lives on the agent record (supervisor_id),
 // not on the assignment, so it is looked up per row. 'none' keeps agents with
@@ -13,6 +14,7 @@ function supervisorKeyOf(row, agentsById) {
 }
 
 export default function AdminTeamAssignments() {
+  const { isAdmin } = useAuth()
   const [rows, setRows]       = useState([])
   const [agents, setAgents]   = useState([])
   const [teams, setTeams]     = useState([])
@@ -134,11 +136,13 @@ export default function AdminTeamAssignments() {
             {supervisorOptions.anyUnset && <option value="none">— Not set —</option>}
           </select>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
-          <button className="btn btn-primary" onClick={() => setEditing({
-            agent_id: '', group_id: '', effective_start_month: '', effective_end_month: '', active: true,
-          })}>+ Add Assignment</button>
-        </div>
+        {isAdmin && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button className="btn btn-primary" onClick={() => setEditing({
+              agent_id: '', group_id: '', effective_start_month: '', effective_end_month: '', active: true,
+            })}>+ Add Assignment</button>
+          </div>
+        )}
       </div>
 
       {loading ? <div className="loading">Loading...</div> : (
@@ -152,7 +156,7 @@ export default function AdminTeamAssignments() {
                 <th>Start Date <span style={{ fontWeight: 400, color: '#9ca3af' }}>(MM/DD/YYYY)</span></th>
                 <th>End Date <span style={{ fontWeight: 400, color: '#9ca3af' }}>(MM/DD/YYYY)</span></th>
                 <th>Active</th>
-                <th></th>
+                {isAdmin && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -166,18 +170,18 @@ export default function AdminTeamAssignments() {
                   <td style={{ fontSize: 12 }}>{formatDateUS(r.effective_start_month)}</td>
                   <td style={{ fontSize: 12 }}>{formatDateUS(r.effective_end_month)}</td>
                   <td><span style={{ color: r.active ? '#1a6e3a' : '#842029', fontWeight: 600, fontSize: 12 }}>{r.active ? 'Yes' : 'No'}</span></td>
-                  <td><button className="btn btn-sm btn-secondary" onClick={() => setEditing({ ...r, metrics_agents: undefined, metrics_groups: undefined })}>Edit</button></td>
+                  {isAdmin && <td><button className="btn btn-sm btn-secondary" onClick={() => setEditing({ ...r, metrics_agents: undefined, metrics_groups: undefined })}>Edit</button></td>}
                 </tr>
               ))}
               {displayRows.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No assignments found.</td></tr>
+                <tr><td colSpan={isAdmin ? 7 : 6} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No assignments found.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
-      {editing && (
+      {editing && isAdmin && (
         <Modal
           title={editing.id ? 'Edit Assignment' : 'Add Assignment'}
           onClose={() => setEditing(null)}

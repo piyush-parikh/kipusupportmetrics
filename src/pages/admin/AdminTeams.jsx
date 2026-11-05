@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getAllTeams, upsertTeam, copyGoalsToTeam } from '../../lib/api'
 import Modal from '../../components/Modal'
+import { useAuth } from '../../lib/useAuth'
 
 function todayISO() {
   const d = new Date()
@@ -8,6 +9,7 @@ function todayISO() {
 }
 
 export default function AdminTeams() {
+  const { isAdmin } = useAuth()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -71,11 +73,14 @@ export default function AdminTeams() {
 
       {error && <div className="error-msg">{error}</div>}
 
-      <div style={{ marginBottom: 12 }}>
-        <button className="btn btn-primary" onClick={() => { setCopyFrom(''); setEditing({
-          group_key: '', group_name: '', active: true, display_order: 0, has_goals: true,
-        }) }}>+ Add Team</button>
-      </div>
+      {!isAdmin && <div className="view-only-note">View only. Ask an administrator to make changes.</div>}
+      {isAdmin && (
+        <div style={{ marginBottom: 12 }}>
+          <button className="btn btn-primary" onClick={() => { setCopyFrom(''); setEditing({
+            group_key: '', group_name: '', active: true, display_order: 0, has_goals: true,
+          }) }}>+ Add Team</button>
+        </div>
+      )}
 
       {loading ? <div className="loading">Loading...</div> : (
         <div className="table-wrap">
@@ -87,7 +92,7 @@ export default function AdminTeams() {
                 <th>Display Order</th>
                 <th>Active</th>
                 {hasGoalsSupported && <th>Has Goals</th>}
-                <th></th>
+                {isAdmin && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -100,18 +105,18 @@ export default function AdminTeams() {
                   {hasGoalsSupported && (
                     <td><span style={{ color: r.has_goals === false ? '#6b7a8d' : '#1a6e3a', fontWeight: 600, fontSize: 12 }}>{r.has_goals === false ? 'No' : 'Yes'}</span></td>
                   )}
-                  <td><button className="btn btn-sm btn-secondary" onClick={() => { setCopyFrom(''); setEditing({ ...r }) }}>Edit</button></td>
+                  {isAdmin && <td><button className="btn btn-sm btn-secondary" onClick={() => { setCopyFrom(''); setEditing({ ...r }) }}>Edit</button></td>}
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={hasGoalsSupported ? 6 : 5} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No teams found.</td></tr>
+                <tr><td colSpan={(hasGoalsSupported ? 5 : 4) + (isAdmin ? 1 : 0)} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No teams found.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
-      {editing && (
+      {editing && isAdmin && (
         <Modal
           title={editing.id ? `Edit Team: ${editing.group_name}` : 'Add Team'}
           onClose={() => setEditing(null)}

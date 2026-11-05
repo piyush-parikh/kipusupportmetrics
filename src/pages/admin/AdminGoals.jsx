@@ -7,6 +7,7 @@ import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
 import { shiftDay, runsOn, overlaps } from '../../lib/goalPlan'
+import { useAuth } from '../../lib/useAuth'
 
 // APT-145: the Goals page is one grid — metrics down the side, teams across the
 // top — showing the goal each team is running today. Clicking a value opens the
@@ -24,6 +25,7 @@ function goalText(value, unitType) {
 }
 
 export default function AdminGoals() {
+  const { isAdmin } = useAuth()
   const [goals, setGoals]     = useState([])
   const [teams, setTeams]     = useState([])
   const [metrics, setMetrics] = useState([])
@@ -196,12 +198,17 @@ export default function AdminGoals() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <h1 className="page-title">Goals</h1>
-          <p className="page-subtitle">Goals active today. Click any value to edit it, or a dash to add one.</p>
+          <p className="page-subtitle">
+            {isAdmin
+              ? 'Goals active today. Click any value to edit it, or a dash to add one.'
+              : 'Goals active today.'}
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={() => openAdd(null, null)}>+ Add Goal</button>
+        {isAdmin && <button className="btn btn-primary" onClick={() => openAdd(null, null)}>+ Add Goal</button>}
       </div>
 
       {error && <div className="error-msg">{error}</div>}
+      {!isAdmin && <div className="view-only-note">View only. Ask an administrator to make changes.</div>}
 
       {notice && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#eef4ff', border: '1px solid #c7d9f7', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
@@ -214,7 +221,7 @@ export default function AdminGoals() {
         <div style={{ background: '#fff4e5', border: '1px solid #f3cf9a', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
           <strong>{clashCount} goal{clashCount === 1 ? '' : 's'} need attention.</strong>{' '}
           A team has more than one goal running for the same metric, so reports cannot tell which to use.
-          Click the ⚠ cells below to sort them out.
+          {isAdmin ? 'Click the ⚠ cells below to sort them out.' : 'An administrator needs to sort them out.'}
         </div>
       )}
 
@@ -247,23 +254,42 @@ export default function AdminGoals() {
                       const clash = list.length > 1
                       return (
                         <td key={t.id} style={{ textAlign: 'center', padding: 0 }}>
-                          <button
-                            onClick={() => openCell(m, t)}
-                            title={
-                              clash ? `${list.length} goals are running for this metric — click to sort out`
-                                : g ? `Goal ${goalText(g.goal_value, m.unit_type)}${g.tolerance_value ? ` ±${g.tolerance_value}` : ''}, running since ${formatDateUS(g.effective_start_month)}`
-                                : `No goal — click to add one for ${t.group_name}`
-                            }
-                            style={{
-                              width: '100%', padding: '9px 6px', border: 'none', background: 'transparent',
-                              cursor: 'pointer', font: 'inherit',
-                              fontWeight: g ? 500 : 400,
-                              color: clash ? '#9a6400' : g ? '#1a1a2e' : '#c3c9d2',
-                            }}
-                          >
-                            {clash && <span style={{ marginRight: 4 }}>⚠</span>}
-                            {g ? goalText(g.goal_value, m.unit_type) : '—'}
-                          </button>
+                          {isAdmin ? (
+                            <button
+                              onClick={() => openCell(m, t)}
+                              title={
+                                clash ? `${list.length} goals are running for this metric — click to sort out`
+                                  : g ? `Goal ${goalText(g.goal_value, m.unit_type)}${g.tolerance_value ? ` ±${g.tolerance_value}` : ''}, running since ${formatDateUS(g.effective_start_month)}`
+                                  : `No goal — click to add one for ${t.group_name}`
+                              }
+                              style={{
+                                width: '100%', padding: '9px 6px', border: 'none', background: 'transparent',
+                                cursor: 'pointer', font: 'inherit',
+                                fontWeight: g ? 500 : 400,
+                                color: clash ? '#9a6400' : g ? '#1a1a2e' : '#c3c9d2',
+                              }}
+                            >
+                              {clash && <span style={{ marginRight: 4 }}>⚠</span>}
+                              {g ? goalText(g.goal_value, m.unit_type) : '—'}
+                            </button>
+                          ) : (
+                            // APT-149: same value, same colour, nothing to click
+                            <div
+                              title={
+                                clash ? `${list.length} goals are running for this metric`
+                                  : g ? `Goal ${goalText(g.goal_value, m.unit_type)}${g.tolerance_value ? ` ±${g.tolerance_value}` : ''}, running since ${formatDateUS(g.effective_start_month)}`
+                                  : `No goal for ${t.group_name}`
+                              }
+                              style={{
+                                padding: '9px 6px',
+                                fontWeight: g ? 500 : 400,
+                                color: clash ? '#9a6400' : g ? '#1a1a2e' : '#c3c9d2',
+                              }}
+                            >
+                              {clash && <span style={{ marginRight: 4 }}>⚠</span>}
+                              {g ? goalText(g.goal_value, m.unit_type) : '—'}
+                            </div>
+                          )}
                         </td>
                       )
                     })}
@@ -276,7 +302,7 @@ export default function AdminGoals() {
       )}
 
       {/* Which of several clashing goals to open */}
-      {picking && (
+      {picking && isAdmin && (
         <Modal
           title={`${picking.metric.metric_name} — ${picking.team.group_name}`}
           onClose={() => setPicking(null)}
@@ -304,7 +330,7 @@ export default function AdminGoals() {
       )}
 
       {/* ── One goal, as many teams as it fits ─────────────────────────── */}
-      {adding && (
+      {adding && isAdmin && (
         <Modal
           title="Add Goal"
           onClose={() => setAdding(null)}
@@ -405,7 +431,7 @@ export default function AdminGoals() {
         </Modal>
       )}
 
-      {editing && (
+      {editing && isAdmin && (
         <Modal
           title={editing.id ? 'Edit Goal' : 'Add Goal'}
           onClose={() => setEditing(null)}

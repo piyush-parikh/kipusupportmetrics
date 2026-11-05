@@ -4,8 +4,10 @@ import { getAllAgents, upsertAgent, autoDeactivateExpiredAgents, getAgentTeamAss
 import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
+import { useAuth } from '../../lib/useAuth'
 
 export default function AdminAgents() {
+  const { isAdmin } = useAuth()
   const [allRows, setAllRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -23,10 +25,13 @@ export default function AdminAgents() {
 
   const load = async () => {
     setLoading(true)
-    try {
-      await autoDeactivateExpiredAgents()
-    } catch (_) {
-      // Column may not exist yet — silently skip
+    // APT-149: this is an UPDATE on metrics_agents, so only an admin runs it
+    if (isAdmin) {
+      try {
+        await autoDeactivateExpiredAgents()
+      } catch (_) {
+        // Column may not exist yet — silently skip
+      }
     }
     try {
       const rows = await getAllAgents()
@@ -110,6 +115,7 @@ export default function AdminAgents() {
       </div>
 
       {error && <div className="error-msg">{error}</div>}
+      {!isAdmin && <div className="view-only-note">View only. Ask an administrator to make changes.</div>}
 
       <div className="filter-bar" style={{ marginBottom: 12 }}>
         <div className="filter-group">
@@ -130,11 +136,13 @@ export default function AdminAgents() {
             <option value="inactive">Inactive</option>
           </select>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
-          <button className="btn btn-primary" onClick={() => setEditing({
-            agent_name: '', role: '', supervisor_id: null, hire_date: '', go_live_date: '', employment_end_date: '', notes: '', active: true,
-          })}>+ Add Agent</button>
-        </div>
+        {isAdmin && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button className="btn btn-primary" onClick={() => setEditing({
+              agent_name: '', role: '', supervisor_id: null, hire_date: '', go_live_date: '', employment_end_date: '', notes: '', active: true,
+            })}>+ Add Agent</button>
+          </div>
+        )}
       </div>
 
       {loading ? <div className="loading">Loading...</div> : (
@@ -149,7 +157,7 @@ export default function AdminAgents() {
                 <th>End Date <span style={{ fontWeight: 400, color: '#9ca3af' }}>(MM/DD/YYYY)</span></th>
                 <th>Active</th>
                 <th>Notes</th>
-                <th></th>
+                {isAdmin && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -162,18 +170,18 @@ export default function AdminAgents() {
                   <td style={{ fontSize: 12, color: r.employment_end_date ? '#842029' : '#9ca3af' }}>{formatDateUS(r.employment_end_date)}</td>
                   <td><span style={{ color: r.active ? '#1a6e3a' : '#842029', fontWeight: 600, fontSize: 12 }}>{r.active ? 'Yes' : 'No'}</span></td>
                   <td style={{ fontSize: 12, color: '#6b7a8d', maxWidth: 200 }}>{r.notes ?? '—'}</td>
-                  <td><button className="btn btn-sm btn-secondary" onClick={() => setEditing({ ...r })}>Edit</button></td>
+                  {isAdmin && <td><button className="btn btn-sm btn-secondary" onClick={() => setEditing({ ...r })}>Edit</button></td>}
                 </tr>
               ))}
               {displayRows.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No agents match the current filters.</td></tr>
+                <tr><td colSpan={isAdmin ? 8 : 7} style={{ textAlign: 'center', padding: 32, color: '#6b7a8d' }}>No agents match the current filters.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
-      {editing && (
+      {editing && isAdmin && (
         <Modal
           title={editing.id ? `Edit Agent: ${editing.agent_name}` : 'Add Agent'}
           onClose={() => setEditing(null)}

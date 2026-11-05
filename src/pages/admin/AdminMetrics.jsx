@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { getAllMetricDefinitions, upsertMetricDefinition } from '../../lib/api'
 import Modal from '../../components/Modal'
+import { useAuth } from '../../lib/useAuth'
 
+// APT-149: onEdit is absent for a non-admin, which also drops the Edit column
 function MetricSection({ title, rows, onEdit }) {
   if (!rows.length) return null
   return (
@@ -18,7 +20,7 @@ function MetricSection({ title, rows, onEdit }) {
               <th>Counts to Score</th>
               <th>Order</th>
               <th>Active</th>
-              <th></th>
+              {onEdit && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -31,7 +33,7 @@ function MetricSection({ title, rows, onEdit }) {
                 <td>{r.counts_toward_score ? 'Yes' : 'No'}</td>
                 <td>{r.display_order}</td>
                 <td><span style={{ color: r.active ? '#1a6e3a' : '#842029', fontWeight: 600, fontSize: 12 }}>{r.active ? 'Yes' : 'No'}</span></td>
-                <td><button className="btn btn-sm btn-secondary" onClick={() => onEdit({ ...r })}>Edit</button></td>
+                {onEdit && <td><button className="btn btn-sm btn-secondary" onClick={() => onEdit({ ...r })}>Edit</button></td>}
               </tr>
             ))}
           </tbody>
@@ -42,6 +44,7 @@ function MetricSection({ title, rows, onEdit }) {
 }
 
 export default function AdminMetrics() {
+  const { isAdmin } = useAuth()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -82,18 +85,21 @@ export default function AdminMetrics() {
         <p className="page-subtitle">Configure which metrics are tracked and scored</p>
       </div>
       {error && <div className="error-msg">{error}</div>}
-      <div style={{ marginBottom: 12 }}>
-        <button className="btn btn-primary" onClick={() => setEditing({
-          metric_key: '', metric_name: '', unit_type: 'count',
-          direction_good: 'at_or_above', counts_toward_score: true,
-          active: true, display_order: 0,
-        })}>+ Add Metric</button>
-      </div>
+      {!isAdmin && <div className="view-only-note">View only. Ask an administrator to make changes.</div>}
+      {isAdmin && (
+        <div style={{ marginBottom: 12 }}>
+          <button className="btn btn-primary" onClick={() => setEditing({
+            metric_key: '', metric_name: '', unit_type: 'count',
+            direction_good: 'at_or_above', counts_toward_score: true,
+            active: true, display_order: 0,
+          })}>+ Add Metric</button>
+        </div>
+      )}
       {loading ? <div className="loading">Loading...</div> : (
         <>
-          <MetricSection title="Scored Metrics" rows={scoredMetrics} onEdit={setEditing} />
-          <MetricSection title="Additional Metrics" rows={additionalMetrics} onEdit={setEditing} />
-          <MetricSection title="Inactive Metrics" rows={inactiveMetrics} onEdit={setEditing} />
+          <MetricSection title="Scored Metrics" rows={scoredMetrics} onEdit={isAdmin ? setEditing : null} />
+          <MetricSection title="Additional Metrics" rows={additionalMetrics} onEdit={isAdmin ? setEditing : null} />
+          <MetricSection title="Inactive Metrics" rows={inactiveMetrics} onEdit={isAdmin ? setEditing : null} />
         </>
       )}
       {editing && (
