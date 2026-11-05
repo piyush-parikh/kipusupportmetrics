@@ -7,6 +7,23 @@ function toDateParam(month) {
   return month.length === 7 ? `${month}-01` : month
 }
 
+// ── Access (app_users) ────────────────────────────────────────────────────────
+
+// APT-149: the signed-in person's role, 'admin' or 'user'. A person can read
+// only their own row, so this returns null when they have not been given
+// access yet — which the app shows as a "No access" screen rather than an
+// error. Throws on a real failure so the caller can offer a Retry.
+export async function getMyRole(userId) {
+  if (!userId) return null
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('role')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.role ?? null
+}
+
 // ── Teams (metrics_groups where group_type='team') ────────────────────────────
 
 export async function getTeams() {
