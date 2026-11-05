@@ -106,6 +106,7 @@ export default function AdminTeamAssignments() {
       </div>
 
       {error && <div className="error-msg">{error}</div>}
+      {!isAdmin && <div className="view-only-note">View only. Ask an administrator to make changes.</div>}
 
       <div className="filter-bar" style={{ marginBottom: 12 }}>
         <div className="filter-group">

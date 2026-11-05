@@ -103,7 +103,7 @@ export default function AdminMetrics() {
           <MetricSection title="Inactive Metrics" rows={inactiveMetrics} onEdit={isAdmin ? setEditing : null} />
         </>
       )}
-      {editing && (
+      {editing && isAdmin && (
         <Modal
           title={editing.id ? 'Edit Metric' : 'Add Metric'}
           onClose={() => setEditing(null)}
