@@ -1,10 +1,31 @@
 import { supabase } from './supabase'
 import { planGoalChange } from './goalPlan'
+import { monthToDate } from './dates'
 
-// Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres
+// Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres.
+// Lenient, and used by the older queries (scorecards, goals, attendance) where
+// a missing month means "no filter". The two new tables use monthToDate
+// instead, which refuses a month it cannot convert — see APT-153.
 function toDateParam(month) {
   if (!month) return undefined
   return month.length === 7 ? `${month}-01` : month
+}
+
+// ── Access (app_users) ────────────────────────────────────────────────────────
+
+// APT-149: the signed-in person's role, 'admin' or 'user'. A person can read
+// only their own row, so this returns null when they have not been given
+// access yet — which the app shows as a "No access" screen rather than an
+// error. Throws on a real failure so the caller can offer a Retry.
+export async function getMyRole(userId) {
+  if (!userId) return null
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('role')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.role ?? null
 }
 
 // ── Teams (metrics_groups where group_type='team') ────────────────────────────
@@ -448,7 +469,10 @@ export async function getActiveGoals({ groupId, month }) {
   return data
 }
 
-// ── Notes (metrics_agent_monthly_notes) ───────────────────────────────────────
+// ── Notes, old table (metrics_agent_monthly_notes) ───────────────────────────
+// legacy, old table, not used since APT-151 — kept only so the change is easy
+// to review. Notes now live in metrics_agent_notes, one row per author, and
+// adjustments in metrics_agent_month_adjustments. Nothing calls these three.
 
 export async function getAgentMonthNote({ agentId, noteMonth }) {
   const { data, error } = await supabase
@@ -497,6 +521,169 @@ export async function getAllNotes({ agentId, month } = {}) {
   const { data, error } = await query
   if (error) throw error
   return data
+}
+
+// ── Notes, per author (metrics_agent_notes) ──────────────────────────────────
+//
+// APT-151: a note belongs to the person who wrote it. The database decides who
+// may see what — a User reads and writes only their own rows, an Admin all of
+// them — so these functions never filter by author themselves, except where a
+// particular person's row is wanted.
+
+// My own note for this agent and month, or null if I have not written one
+export async function getMyNote(agentId, month, userId) {
+  if (!agentId || !month || !userId) return null
+  const { data, error } = await supabase
+    .from('metrics_agent_notes')
+    .select('*')
+    .eq('agent_id', Number(agentId))
+    .eq('metric_month', monthToDate(month))
+    .eq('author_user', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// Writes my own note. Emptying the box removes the row rather than storing a
+// blank one, so "no note" and "an empty note" cannot drift apart.
+export async function upsertMyNote({ agentId, month, text, userId, byName }) {
+  const monthDate = monthToDate(month)
+  if (!String(text ?? '').trim()) {
+    const { error } = await supabase
+      .from('metrics_agent_notes')
+      .delete()
+      .eq('agent_id', Number(agentId))
+      .eq('metric_month', monthDate)
+      .eq('author_user', userId)
+    if (error) throw error
+    return null
+  }
+  const { data, error } = await supabase
+    .from('metrics_agent_notes')
+    .upsert({
+      agent_id: Number(agentId),
+      metric_month: monthDate,
+      note_text: text,
+      author_user: userId,
+      author_name: byName ?? null,
+    }, { onConflict: 'agent_id,metric_month,author_user' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Every note this person is allowed to see: their own, or all of them for an
+// Admin. The database applies that rule, not this query.
+export async function getAllNotesVisible() {
+  const { data, error } = await supabase
+    .from('metrics_agent_notes')
+    .select('*, metrics_agents(agent_name)')
+    .order('metric_month', { ascending: false })
+    .order('agent_id')
+  if (error) throw error
+  return data
+}
+
+export async function updateNoteById(id, text) {
+  const { data, error } = await supabase
+    .from('metrics_agent_notes')
+    .update({ note_text: text })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Used by anyone for their own note, and by an Admin to add one on behalf of
+// someone else. The database refuses an author other than yourself unless you
+// are an Admin.
+export async function insertNoteForAuthor({ agentId, month, text, authorUserId, authorName }) {
+  const { data, error } = await supabase
+    .from('metrics_agent_notes')
+    .insert({
+      agent_id: Number(agentId),
+      metric_month: monthToDate(month),
+      note_text: text,
+      author_user: authorUserId ?? null,
+      author_name: authorName ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteNoteById(id) {
+  const { error } = await supabase
+    .from('metrics_agent_notes')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+// Accounts and their roles — an Admin sees every row, a User only their own.
+// Used to show a note's author as an email address.
+export async function getAppUsers() {
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('user_id, email, role')
+  if (error) throw error
+  return data
+}
+
+// ── Metric adjustments (metrics_agent_month_adjustments) ─────────────────────
+//
+// APT-151: shared, not private. Everyone with a role sees and may change them,
+// because an adjustment changes the rating everyone reads.
+
+export async function getAdjustments(agentId, month) {
+  if (!agentId || !month) return []
+  const { data, error } = await supabase
+    .from('metrics_agent_month_adjustments')
+    .select('*')
+    .eq('agent_id', Number(agentId))
+    .eq('metric_month', monthToDate(month))
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getAllAdjustments({ agentId, month } = {}) {
+  let query = supabase
+    .from('metrics_agent_month_adjustments')
+    .select('*, metrics_agents(agent_name)')
+    .order('metric_month', { ascending: false })
+    .order('agent_id')
+    .order('metric_key')
+  if (agentId) query = query.eq('agent_id', Number(agentId))
+  if (month)   query = query.eq('metric_month', monthToDate(month))
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertAdjustment(row) {
+  // APT-153: normalised here as well as in adjustmentToRow, so any future
+  // caller that builds a row by hand cannot reintroduce the 'YYYY-MM' bug
+  const payload = { ...row, metric_month: monthToDate(row?.metric_month) }
+  const { data, error } = await supabase
+    .from('metrics_agent_month_adjustments')
+    .upsert(payload, { onConflict: 'agent_id,metric_month,metric_key' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteAdjustment({ agentId, month, metricKey }) {
+  const { error } = await supabase
+    .from('metrics_agent_month_adjustments')
+    .delete()
+    .eq('agent_id', Number(agentId))
+    .eq('metric_month', monthToDate(month))
+    .eq('metric_key', metricKey)
+  if (error) throw error
 }
 
 // ── Attendance (references old tables — may fail if schema changed) ───────────

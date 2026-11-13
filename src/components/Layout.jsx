@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useState } from 'react'
+import { useAuth } from '../lib/useAuth'
 
 const NAV = [
   {
@@ -50,6 +51,9 @@ function getSidebarPref() {
 
 export default function Layout({ children }) {
   const [open, setOpen] = useState(getSidebarPref)
+  // APT-149: the menu itself is identical for everyone — only the footer
+  // below says who is signed in and what they can do.
+  const { email, isAdmin, signOut } = useAuth()
 
   function toggle() {
     const next = !open
@@ -90,6 +94,15 @@ export default function Layout({ children }) {
                 ))}
               </div>
             ))}
+          </div>
+        )}
+        {open && (
+          <div className="sidebar-user">
+            <span className="sidebar-user-email" title={email}>{email}</span>
+            <span className="sidebar-user-role">{isAdmin ? 'Admin' : 'User'}</span>
+            <div>
+              <button className="sidebar-signout" onClick={signOut}>Sign out</button>
+            </div>
           </div>
         )}
       </nav>

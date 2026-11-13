@@ -16,6 +16,76 @@
 export const ARTICLES = [
   // ─────────────────────────────────────────────────────────────────────────
   {
+    id: 'signing-in',
+    title: 'Signing In and Access',
+    category: 'Daily Use',
+    summary:
+      'How to sign in, what the two kinds of account can do, and who to ask when you need access or a new password.',
+    blocks: [
+      { type: 'h2', text: 'Signing in' },
+      {
+        type: 'p',
+        text:
+          'The tracker now asks you to sign in. Enter the **email address** your account was set up with and your **password**, then click **Sign in**. You stay signed in on that browser, so you will not be asked again every time.',
+      },
+      {
+        type: 'p',
+        text:
+          'Once you are in, the bottom of the left-hand menu shows the email you signed in with and whether you are an **Admin** or a **User**. The **Sign out** button is in the same place.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          'Accounts are created for you — there is no "create an account" option, and no "forgot password" email. If you need an account, a password reset, or you have changed email address, ask an administrator.',
+      },
+
+      { type: 'h2', text: 'The two kinds of account' },
+      {
+        type: 'p',
+        text:
+          'Everyone sees the same menu. The difference is what you can change.',
+      },
+      {
+        type: 'table',
+        headers: ['Section', 'Admin', 'User'],
+        rows: [
+          ['Agent Performance, Team Dashboard', 'Full use', 'Full use'],
+          ['Attendance Summary, Attendance Entry, Attendance Codes', 'Full use', 'Full use'],
+          ['Supervisor Notes', 'Full use', 'Full use'],
+          ['Agents, Teams, Team Assignments', 'Can add and edit', 'Can look, cannot change'],
+          ['Metrics, Goals', 'Can add and edit', 'Can look, cannot change'],
+          ['Help & Playbook', 'Full use', 'Full use'],
+        ],
+      },
+      {
+        type: 'p',
+        text:
+          'On the pages a User cannot change, the buttons are simply not there and a short note at the top says **"View only. Ask an administrator to make changes."** Everything on those pages can still be read, searched and filtered as normal.',
+      },
+
+      { type: 'h2', text: 'If something is not right' },
+      {
+        type: 'list',
+        items: [
+          '**"Email or password is incorrect."** — check the email address, then ask an administrator to reset your password. For your security the tool will not say whether an email address exists.',
+          '**"No access"** after signing in — your account exists but has not been given access yet. Contact an administrator.',
+          '**"Could not load your access"** — usually a connection problem rather than anything to do with your account. Click **Retry**; if it keeps happening, sign out and back in.',
+          '**"Your sign-in has expired."** — you have been signed out after a long idle period. Sign in again and carry on.',
+          '**"You do not have permission to do this."** — you tried something your account cannot do. Ask an administrator.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'tip',
+        text:
+          'Signing out in one browser tab signs you out in the others too. If you share a computer, sign out when you are finished.',
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
     id: 'goals',
     title: 'How to Use the Goals Section',
     category: 'Setup',
@@ -623,18 +693,24 @@ export const ARTICLES = [
     title: 'How to Use Supervisor Notes',
     category: 'Daily Use',
     summary:
-      'Record a coaching note during a 1:1, hide it while screen-sharing with the agent, and manage all notes across the team from the Admin Notes section.',
+      'Record a coaching note during a 1:1, hide it while screen-sharing with the agent, and understand who else can read it.',
     blocks: [
       { type: 'h2', text: 'What supervisor notes are for' },
       {
         type: 'p',
         text:
-          'A **supervisor note** is a private coaching record attached to a specific agent and month. It lets the supervisor capture what was discussed, any action items, or observed patterns — right alongside the scorecard — without the agent seeing it during the review.',
+          'A **supervisor note** is a coaching record attached to a specific agent and month. It lets you capture what was discussed, any action items, or observed patterns — right alongside the scorecard — without the agent seeing it during the review.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          '**Your note is your own.** Only you and an Administrator can read what you write. Other people writing about the same agent and the same month keep their own separate notes, and nobody overwrites anybody.',
       },
       {
         type: 'p',
         text:
-          'Notes are written in the **Agent Performance** page during (or after) the 1:1. They can also be added, edited, or browsed in bulk from the **Admin Notes** section (Metric Setup → Notes).',
+          'Notes are written in the **Agent Performance** page during (or after) the 1:1. You can also see and edit all of your own notes in one place from **Metric Setup → Notes**. An Administrator sees everyone\'s there.',
       },
 
       { type: 'h2', text: 'Writing a note during a 1:1' },
@@ -966,7 +1042,7 @@ export const ARTICLES = [
         items: [
           'Adjustments apply **one month at a time** — for a 90-day PIP, set the custom goal on each of the three months.',
           'Adjustments currently affect the **Monthly view** and that month\'s rating. The Quarterly / Half-Year / YTD tabs don\'t reflect them yet (planned as APT-128).',
-          'Behind the scenes the adjustment is stored with that agent\'s monthly note, so it travels with the month it belongs to.',
+          'Adjustments are **shared, not private**. Unlike a note, everyone who can see this agent sees the adjustment, who made it and why — and everyone sees the same rating as a result.',
         ],
       },
     ],
