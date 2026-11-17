@@ -1,10 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  getTeams, getAgents,
+  getTeams, getAgents, getAllAgents,
   getAllMetricDefinitions, getScorecard, getScorecardYear, getSummary, getActiveGoals,
+  getMetricExclusions,
 } from '../lib/api'
+import {
+  buildExclusionIndex, filterMetricsForTeams, EMPTY_EXCLUSIONS,
+} from '../lib/metricApplicability'
 import { formatValue, statusClass, statusLabel, ratingClass, recentMonths, computeRating } from '../lib/format'
 import { toMessage } from '../lib/errors'
+import {
+  buildSupervisorOptions, applySupervisorFilter, resolveSupervisorChoice, ALL as SUPERVISOR_ALL,
+} from '../lib/supervisorFilter'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -87,13 +94,20 @@ function computeAgentPeriodMetrics(agentId, periodMonths, yearDetail, metrics) {
 }
 
 // View rows are the primary source; inactive definition keys are excluded.
-function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
+// APT-155: teamIds + exclusions keep metrics that do not apply to the team on
+// screen out of the fallback list, so no empty row is drawn for a metric that
+// team does not have. Rows from the scorecard view are already correct (the
+// view omits excluded pairs), so a metric with real data is still always shown.
+function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set(), teamIds = [], exclusions = EMPTY_EXCLUSIONS) {
+  const idByKey = {}
+  fallbackDefs.forEach((d) => { if (d.metric_key) idByKey[d.metric_key] = d.id })
   const seen = new Set()
   const list = []
   viewRows.forEach((r) => {
     if (!seen.has(r.metric_key) && !inactiveKeys.has(r.metric_key)) {
       seen.add(r.metric_key)
       list.push({
+        id: idByKey[r.metric_key],
         metric_key: r.metric_key,
         metric_name: r.metric_name,
         unit_type: r.unit_type,
@@ -103,7 +117,7 @@ function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
       })
     }
   })
-  fallbackDefs.forEach((m) => {
+  filterMetricsForTeams(fallbackDefs, teamIds, exclusions).forEach((m) => {
     if (!seen.has(m.metric_key)) list.push({ ...m, display_order: m.display_order ?? 999 })
   })
   return list.sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
@@ -181,12 +195,17 @@ export default function TeamDashboard() {
   const [teams, setTeams]   = useState([])
   const [agents, setAgents] = useState([])
   const [allDefs, setAllDefs] = useState([])
+  // APT-155: stored "this metric does not apply to this team" choices
+  const [exclusionRows, setExclusionRows] = useState([])
 
   const [teamId, setTeamId]         = useState(() => loadPref('ktp_td_team', ''))
   const [search, setSearch]         = useState('')
   const [month, setMonth]           = useState(() => loadPref('ktp_td_month', monthOptions[0]?.value ?? ''))
   const [rollupYear, setRollupYear] = useState(() => loadPref('ktp_td_year', String(new Date().getFullYear())))
   const [showInactive, setShowInactive] = useState(false)
+  // APT-154: filter the whole page down to one Supervisor / Team Lead's agents
+  const [supervisor, setSupervisor] = useState(() => loadPref('ktp_td_supervisor', SUPERVISOR_ALL))
+  const [directory, setDirectory]   = useState([])
   const [selectedQ, setSelectedQ]   = useState('all')
 
   const [monthDetail, setMonthDetail] = useState([])
@@ -201,13 +220,15 @@ export default function TeamDashboard() {
   useEffect(() => savePref('ktp_td_team', teamId), [teamId])
   useEffect(() => savePref('ktp_td_month', month), [month])
   useEffect(() => savePref('ktp_td_year', rollupYear), [rollupYear])
+  useEffect(() => savePref('ktp_td_supervisor', supervisor), [supervisor])
 
   // APT-65: Load all defs (active + inactive); default to first team only if no saved pref
   useEffect(() => {
-    Promise.all([getTeams(), getAllMetricDefinitions()])
-      .then(([t, m]) => {
+    Promise.all([getTeams(), getAllMetricDefinitions(), getMetricExclusions()])
+      .then(([t, m, exclusions]) => {
         setTeams(t)
         setAllDefs(m)
+        setExclusionRows(exclusions)
         const saved = loadPref('ktp_td_team', '')
         if (!saved && t.length > 0) setTeamId(String(t[0].id))
       })
@@ -222,6 +243,13 @@ export default function TeamDashboard() {
       .then(setAgents)
       .catch((e) => setError(toMessage(e)))
   }, [teamId])
+
+  // APT-154: every agent, used only to put a name and role against a
+  // supervisor_id — a supervisor is often not assigned to the team they look
+  // after, so the team's own list cannot name them.
+  useEffect(() => {
+    getAllAgents().then(setDirectory).catch(() => setDirectory([]))
+  }, [])
 
   const agentIds = useMemo(() => agents.map((a) => a.id), [agents])
 
@@ -259,9 +287,33 @@ export default function TeamDashboard() {
   const metricDefs = useMemo(() => allDefs.filter((d) => d.active), [allDefs])
   const inactiveKeys = useMemo(() => new Set(allDefs.filter((d) => !d.active).map((d) => d.metric_key)), [allDefs])
 
+  // APT-155: the teams whose rules decide which metrics belong on screen. The
+  // page always has a team chosen; should none be chosen, a metric is kept
+  // when it still applies to at least one team in view.
+  const exclusionIndex = useMemo(() => buildExclusionIndex(exclusionRows), [exclusionRows])
+  const applicabilityTeamIds = useMemo(
+    () => (teamId ? [teamId] : teams.map((t) => t.id)),
+    [teamId, teams]
+  )
+
   // Build display metric lists with inactiveKeys filter
-  const allMetrics    = useMemo(() => buildMetricList(monthDetail, metricDefs, inactiveKeys), [monthDetail, metricDefs, inactiveKeys])
-  const rollupMetrics = useMemo(() => buildMetricList(yearDetail,  metricDefs, inactiveKeys), [yearDetail,  metricDefs, inactiveKeys])
+  // APT-155: and without metrics that do not apply to the team on screen —
+  // allMetrics feeds the monthly matrix, rollupMetrics the Quarterly and
+  // Half-Year tables.
+  const allMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
+  const rollupMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
 
   // agentId → metricKey → scorecard row
   const detailByAgent = useMemo(() => {
@@ -273,12 +325,32 @@ export default function TeamDashboard() {
     return map
   }, [monthDetail])
 
-  // APT-78/79: Search + inactive filter
+  // APT-154: the dropdown offers whoever supervises someone on this team.
+  // Built from the team's agents and the Show inactive setting only — not from
+  // Search or the supervisor choice itself, so the list stays steady while
+  // typing and a choice cannot remove its own option.
+  const supervisorOptions = useMemo(
+    () => buildSupervisorOptions(agents.filter((a) => showInactive || a.active !== false), directory),
+    [agents, showInactive, directory]
+  )
+
+  // A saved or current choice only survives while it is still on offer
+  const activeSupervisor = useMemo(
+    () => resolveSupervisorChoice(supervisor, supervisorOptions),
+    [supervisor, supervisorOptions]
+  )
+
+  // APT-78/79: Search + inactive filter. APT-154 adds the supervisor filter
+  // here, at the single root every card and table on this page derives from,
+  // so all of them follow one rule.
   const displayAgents = useMemo(
-    () => agents
-      .filter((a) => showInactive || a.active !== false)
-      .filter((a) => !search || a.agent_name.toLowerCase().includes(search.toLowerCase())),
-    [agents, search, showInactive]
+    () => applySupervisorFilter(
+      agents
+        .filter((a) => showInactive || a.active !== false)
+        .filter((a) => !search || a.agent_name.toLowerCase().includes(search.toLowerCase())),
+      activeSupervisor,
+    ),
+    [agents, search, showInactive, activeSupervisor]
   )
 
   // Only show agents who have at least one actual value in the selected month
@@ -381,6 +453,17 @@ export default function TeamDashboard() {
           <select className="filter-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">Select Team</option>
             {teams.map((t) => <option key={t.id} value={t.id}>{t.group_name}</option>)}
+          </select>
+        </div>
+        <div className="filter-group">
+          <label className="filter-label">Supervisor / Team Lead</label>
+          <select
+            className="filter-select"
+            style={{ minWidth: 170 }}
+            value={activeSupervisor}
+            onChange={(e) => setSupervisor(e.target.value)}
+          >
+            {supervisorOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
         <div className="filter-group">

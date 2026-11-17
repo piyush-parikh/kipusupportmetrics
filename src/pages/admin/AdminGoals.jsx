@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   getAllGroupGoals, upsertGroupGoal, deleteGroupGoal, endGroupGoal,
-  applyGoalToTeams, getAllTeams, getAllMetricDefinitions,
+  applyGoalToTeams, getAllTeams, getAllMetricDefinitions, getMetricExclusions,
 } from '../../lib/api'
+import { buildExclusionIndex, isMetricApplicable } from '../../lib/metricApplicability'
 import Modal from '../../components/Modal'
 import DateInput from '../../components/DateInput'
 import { formatDateUS } from '../../lib/format'
@@ -30,6 +31,8 @@ export default function AdminGoals() {
   const [goals, setGoals]     = useState([])
   const [teams, setTeams]     = useState([])
   const [metrics, setMetrics] = useState([])
+  // APT-155: stored "this metric does not apply to this team" choices
+  const [exclusionRows, setExclusionRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
   const [editing, setEditing] = useState(null)
@@ -42,8 +45,10 @@ export default function AdminGoals() {
 
   const load = () => {
     setLoading(true)
-    Promise.all([getAllGroupGoals(), getAllTeams(), getAllMetricDefinitions()])
-      .then(([g, t, m]) => { setGoals(g); setTeams(t); setMetrics(m) })
+    Promise.all([getAllGroupGoals(), getAllTeams(), getAllMetricDefinitions(), getMetricExclusions()])
+      .then(([g, t, m, exclusions]) => {
+        setGoals(g); setTeams(t); setMetrics(m); setExclusionRows(exclusions)
+      })
       .catch((e) => setError(toMessage(e)))
       .finally(() => setLoading(false))
   }
@@ -59,6 +64,7 @@ export default function AdminGoals() {
   }, [])
 
   const activeMetrics = useMemo(() => metrics.filter((m) => m.active), [metrics])
+  const exclusionIndex = useMemo(() => buildExclusionIndex(exclusionRows), [exclusionRows])
 
   // Teams with has_goals turned off are hidden. The column is optional: until a
   // Supabase admin adds it, every active team is shown.
@@ -85,6 +91,15 @@ export default function AdminGoals() {
 
   const addingMetric = metrics.find((m) => String(m.id) === String(adding?.metric_id))
 
+  // APT-155: in Add Goal, only teams the chosen metric applies to can be
+  // ticked, and "Check all" works on those alone. With no metric chosen yet
+  // every team is still offered, exactly as before.
+  const addableTeamCols = teamCols.filter((t) =>
+    !adding?.metric_id || isMetricApplicable(adding.metric_id, [t.id], exclusionIndex))
+  const addCheckedCount = addableTeamCols
+    .filter((t) => (adding?.teamIds ?? []).some((id) => String(id) === String(t.id))).length
+  const addAllTicked = addableTeamCols.length > 0 && addCheckedCount === addableTeamCols.length
+
   const openGoal = (goal) => setEditing({ ...goal, metrics_groups: undefined, metrics_definitions: undefined })
 
   // '+ Add Goal' starts with every team ticked; clicking a dash in the grid
@@ -105,7 +120,11 @@ export default function AdminGoals() {
   }
 
   const saveAdd = async () => {
-    if (!adding.metric_id || !adding.teamIds.length) return
+    // APT-155: a team this metric does not apply to never gets a goal, even if
+    // it was ticked before the metric was chosen
+    const chosenTeamIds = adding.teamIds.filter((id) =>
+      isMetricApplicable(adding.metric_id, [id], exclusionIndex))
+    if (!adding.metric_id || !chosenTeamIds.length) return
     setSaving(true)
     try {
       await applyGoalToTeams({
@@ -113,10 +132,10 @@ export default function AdminGoals() {
         goalValue: adding.goal_value,
         toleranceValue: adding.tolerance_value,
         startDate: adding.start || today,
-        teamIds: adding.teamIds,
+        teamIds: chosenTeamIds,
         existing: goals,
       })
-      const n = adding.teamIds.length
+      const n = chosenTeamIds.length
       setNotice(`Goal applied to ${n} team${n === 1 ? '' : 's'}.`)
       setAdding(null)
       load()
@@ -253,6 +272,20 @@ export default function AdminGoals() {
                       const list = grid[`${m.id}:${t.id}`] ?? []
                       const g = list[0]
                       const clash = list.length > 1
+                      // APT-155: this team does not have this metric, so there
+                      // is no goal to set for it
+                      if (!isMetricApplicable(m.id, [t.id], exclusionIndex)) {
+                        return (
+                          <td key={t.id} style={{ textAlign: 'center', padding: 0 }}>
+                            <div
+                              title="Not applicable to this team"
+                              style={{ padding: '9px 6px', color: '#c3c9d2', fontStyle: 'italic', cursor: 'help' }}
+                            >
+                              n/a
+                            </div>
+                          </td>
+                        )
+                      }
                       return (
                         <td key={t.id} style={{ textAlign: 'center', padding: 0 }}>
                           {isAdmin ? (
@@ -395,20 +428,35 @@ export default function AdminGoals() {
               <button
                 className="btn btn-sm btn-secondary"
                 style={{ marginLeft: 'auto', fontWeight: 400 }}
-                onClick={() => setAdding({ ...adding, teamIds: adding.teamIds.length === teamCols.length ? [] : teamCols.map((t) => t.id) })}
+                onClick={() => setAdding({
+                  ...adding,
+                  teamIds: addAllTicked ? [] : addableTeamCols.map((t) => t.id),
+                })}
               >
-                {adding.teamIds.length === teamCols.length ? 'Uncheck all' : 'Check all'}
+                {addAllTicked ? 'Uncheck all' : 'Check all'}
               </button>
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0 18px' }}>
             {teamCols.map((t) => {
               const live = adding.metric_id ? (grid[`${adding.metric_id}:${t.id}`] ?? [])[0] : null
+              // APT-155: this metric does not apply to this team, so no goal
+              const notApplicable = !!adding.metric_id
+                && !isMetricApplicable(adding.metric_id, [t.id], exclusionIndex)
               return (
-                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '7px 0', borderBottom: '1px solid #f0f2f5' }}>
+                <label
+                  key={t.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+                    cursor: notApplicable ? 'default' : 'pointer',
+                    padding: '7px 0', borderBottom: '1px solid #f0f2f5',
+                    color: notApplicable ? '#9ca3af' : undefined,
+                  }}
+                >
                   <input
                     type="checkbox"
-                    checked={adding.teamIds.some((id) => String(id) === String(t.id))}
+                    disabled={notApplicable}
+                    checked={!notApplicable && adding.teamIds.some((id) => String(id) === String(t.id))}
                     onChange={(e) => setAdding({
                       ...adding,
                       teamIds: e.target.checked
@@ -418,16 +466,18 @@ export default function AdminGoals() {
                   />
                   <span style={{ flex: 1 }}>{t.group_name}</span>
                   <span style={{ fontSize: 11.5, color: '#9ca3af' }}>
-                    {!adding.metric_id ? '' : live ? `now ${goalText(live.goal_value, addingMetric?.unit_type)}` : 'no goal'}
+                    {notApplicable ? 'not applicable'
+                      : !adding.metric_id ? ''
+                      : live ? `now ${goalText(live.goal_value, addingMetric?.unit_type)}` : 'no goal'}
                   </span>
                 </label>
               )
             })}
           </div>
           <p style={{ fontSize: 12, color: '#6b7a8d', marginTop: 10, marginBottom: 0 }}>
-            {adding.teamIds.length === teamCols.length
+            {addAllTicked
               ? 'All teams are checked. Uncheck any team this goal doesn’t apply to.'
-              : `${adding.teamIds.length} of ${teamCols.length} teams selected.`}
+              : `${addCheckedCount} of ${addableTeamCols.length} teams selected.`}
           </p>
         </Modal>
       )}
