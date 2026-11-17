@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { planGoalChange } from './goalPlan'
 import { monthToDate } from './dates'
+import { diffExclusions } from './metricApplicability'
 
 // Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres.
 // Lenient, and used by the older queries (scorecards, goals, attendance) where
@@ -202,6 +203,65 @@ export async function upsertMetricDefinition(row) {
   return data
 }
 
+// ── Metric exclusions (metrics_group_metric_exclusions) ──────────────────────
+//
+// APT-155: one row means "this metric does not apply to this team". No rows
+// means every metric applies everywhere, which is how the system behaved
+// before. The scorecard view already leaves out rows for an excluded pair, so
+// every figure that comes from it follows these choices on its own; the app
+// reads the same table only so that metric lists built from the definitions
+// (placeholder rows and columns for metrics with no data) agree.
+//
+// Anyone signed in with a role may read; only an Administrator may change.
+
+export async function getMetricExclusions() {
+  const { data, error } = await supabase
+    .from('metrics_group_metric_exclusions')
+    .select('group_id, metric_id')
+  if (error) throw error
+  return data ?? []
+}
+
+// Saves the teams one metric does NOT apply to. Adds only the pairs that are
+// missing and removes only the ones no longer wanted, so saving the same
+// selection twice is harmless and a team's other metrics are never touched.
+export async function saveMetricExclusions(metricId, excludedTeamIds) {
+  const metric = Number(metricId)
+  if (!metric) throw new Error('Save the metric first.')
+
+  const { data: current, error: readError } = await supabase
+    .from('metrics_group_metric_exclusions')
+    .select('group_id')
+    .eq('metric_id', metric)
+  if (readError) throw readError
+
+  const { toInsert, toDelete } = diffExclusions(
+    (current ?? []).map((r) => r.group_id),
+    excludedTeamIds ?? [],
+  )
+
+  if (toInsert.length) {
+    const { error } = await supabase
+      .from('metrics_group_metric_exclusions')
+      .upsert(
+        toInsert.map((groupId) => ({ group_id: Number(groupId), metric_id: metric })),
+        { onConflict: 'group_id,metric_id' },
+      )
+    if (error) throw error
+  }
+
+  if (toDelete.length) {
+    const { error } = await supabase
+      .from('metrics_group_metric_exclusions')
+      .delete()
+      .eq('metric_id', metric)
+      .in('group_id', toDelete.map((groupId) => Number(groupId)))
+    if (error) throw error
+  }
+
+  return { added: toInsert.length, removed: toDelete.length }
+}
+
 // ── Group Goals (metrics_group_goals) ─────────────────────────────────────────
 
 export async function getAllGroupGoals() {
@@ -340,6 +400,22 @@ async function overlayAttendance(rows, { month, year, agentId, agentIds, groupId
     const attDef = (defs ?? []).find((d) => /attendance/i.test(`${d.metric_key} ${d.metric_name}`))
     if (!attDef) return rows
 
+    // APT-155: teams this attendance metric no longer applies to. The view
+    // already leaves their rows out, so the overlay must not put one back.
+    // A failure reading the choices must not cost the page its attendance
+    // figures, so it is treated as "no team has turned it off".
+    let attExcludedTeams = new Set()
+    try {
+      const exclusions = await getMetricExclusions()
+      attExcludedTeams = new Set(
+        (exclusions ?? [])
+          .filter((r) => String(r.metric_id) === String(attDef.id))
+          .map((r) => String(r.group_id)),
+      )
+    } catch {
+      attExcludedTeams = new Set()
+    }
+
     const att = await getAttendanceRollup({ month, year })
 
     const live = new Map()
@@ -373,6 +449,8 @@ async function overlayAttendance(rows, { month, year, agentId, agentIds, groupId
     for (const [key, a] of live) {
       if (wanted && !wanted.has(Number(a.agent_id))) continue
       if (!wanted && groupId && String(a.external_group_id) !== String(groupId)) continue
+      // APT-155: not applicable to this agent's team — leave it out entirely
+      if (attExcludedTeams.has(String(a.external_group_id))) continue
       patched.push({
         agent_id: a.agent_id,
         agent_name: a.agent_name ?? null,
