@@ -141,7 +141,25 @@ publish to `main` → mark `[✅]`. Counts as of this writing: **14 not started,
 
 ### Significant
 
-0. **A metric can be made "not applicable" to chosen teams (APT-155, Nov 2026).**
+**Recent, not yet numbered — people change their own password in the app (APT-156, Nov 2026).**
+   `public.app_users` carries `must_change_password boolean NOT NULL` (true for
+   newly created people, false for everyone who existed before). `getMyRole` reads
+   it alongside `role` in one select, with a fallback to selecting `role` alone if
+   the column is ever missing, and the guard redirects anyone whose flag is true to
+   `/change-password` — rendered without the sidebar, with no way past it but
+   changing the password or signing out. `AuthContext.changePassword` re-authenticates
+   with `signInWithPassword` (which both proves the current password and leaves the
+   session freshly signed in), calls `auth.updateUser({ password })`, then clears the
+   flag through `supabase.rpc('mark_password_changed')`, a function that only ever
+   touches the caller's own row; if only that last step fails the change is still
+   reported as successful. Rules live in `src/lib/passwordHelpers.js`: at least 10
+   characters, letters and numbers mixed, different from the current password, and
+   not containing the email's local part. ⚠️ **There is no forgot-password flow** —
+   an administrator sets a new starting password and the person is then asked to
+   choose their own. A real self-service reset needs an email service configured
+   (Supabase's built-in email is rate-limited and nothing else is set up).
+
+**Recent, not yet numbered — a metric can be made "not applicable" to chosen teams (APT-155, Nov 2026).**
    The Metrics page now carries a **Teams** checklist in Add Metric and Edit Metric.
    Unticking a team records that pair in `public.metrics_group_metric_exclusions`
    (one row = this metric does not apply to this team; no rows = applies everywhere).

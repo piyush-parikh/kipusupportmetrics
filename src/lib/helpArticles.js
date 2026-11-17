@@ -64,10 +64,42 @@ export const ARTICLES = [
           'On the pages a User cannot change, the buttons are simply not there and a short note at the top says **"View only. Ask an administrator to make changes."** Everything on those pages can still be read, searched and filtered as normal.',
       },
 
+      { type: 'h2', text: 'Changing your password' },
+      {
+        type: 'p',
+        text:
+          'You can change your own password at any time. At the bottom of the left-hand menu, next to **Sign out**, click **Change password**. Type the password you use now, type the new one twice, and click **Change password**. Tick **Show passwords** if you would rather see what you are typing.',
+      },
+      {
+        type: 'p',
+        text: 'A new password must:',
+      },
+      {
+        type: 'list',
+        items: [
+          'Be **at least 10 characters** long.',
+          'Have a **mix of letters and numbers** — not all letters, not all numbers.',
+          'Be **different** from the password you are using now.',
+          'Not contain the first part of your email address.',
+        ],
+      },
+      {
+        type: 'p',
+        text:
+          'The **first time** you sign in with a password an administrator gave you, the tracker asks you to choose your own before you can go any further. That screen appears on its own, without the menu, and the only other thing you can do there is sign out. Once you have chosen a password you are taken straight to your dashboard and will not be asked again.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          'If you have **forgotten** your password there is nothing you can do from the sign-in screen — there is no reset email. Ask an administrator to set a new starting password for you; the tracker will then ask you to choose your own the next time you sign in.',
+      },
+
       { type: 'h2', text: 'If something is not right' },
       {
         type: 'list',
         items: [
+          '**"Your current password is incorrect."** — the password you typed in the first box is not the one you are signed in with. Try again, or ask an administrator to reset it.',
           '**"Email or password is incorrect."** — check the email address, then ask an administrator to reset your password. For your security the tool will not say whether an email address exists.',
           '**"No access"** after signing in — your account exists but has not been given access yet. Contact an administrator.',
           '**"Could not load your access"** — usually a connection problem rather than anything to do with your account. Click **Retry**; if it keeps happening, sign out and back in.',
