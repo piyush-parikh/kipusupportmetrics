@@ -114,6 +114,11 @@ export const ARTICLES = [
         text:
           'New teams and new metrics appear here on their own as soon as they are added, so the page never needs a developer to keep it up to date.',
       },
+      {
+        type: 'p',
+        text:
+          'A box reading **n/a** means that metric has been turned off for that team on the Metrics page, so there is no goal to set \u2014 and the Add Goal pop-up will not let you tick that team for it.',
+      },
       { type: 'shot', id: 'HELP-001', caption: 'The Goals grid: metrics down the side, teams across the top.' },
 
       { type: 'h2', text: 'When would you add a goal?' },
@@ -386,6 +391,48 @@ export const ARTICLES = [
         variant: 'tip',
         text:
           'Turning a metric off is the safe way to retire it. You can always turn it back on later and everything reappears exactly as before.',
+      },
+
+      { type: 'h2', text: 'Choosing which teams a metric applies to' },
+      {
+        type: 'p',
+        text:
+          'Not every team is measured on every metric. At the bottom of the **Add Metric** and **Edit Metric** pop-ups there is a **Teams** checklist with one tick-box per team, and a **Check all / Uncheck all** button. A new metric starts with every team ticked, which means it applies everywhere.',
+      },
+      {
+        type: 'p',
+        text:
+          'Unticking a team tells the tool that this metric is **not applicable** to that team. For that team\u2019s agents the metric:',
+      },
+      {
+        type: 'list',
+        items: [
+          'Disappears completely — no row on Agent Performance, no row in the Team Dashboard matrix, and nothing in the Quarterly, Half-Year, Year to Date or Trend views.',
+          'Does **not** count toward their Overall Rating, so their On Track and Off Track counts are worked out from the metrics that remain.',
+          'Shows **n/a** on the Goals page, because there is no target to set.',
+        ],
+      },
+      {
+        type: 'p',
+        text:
+          'Every other team carries on exactly as before. An agent who sits on two teams keeps the metric as long as **one** of those teams still has it.',
+      },
+      {
+        type: 'callout',
+        variant: 'warning',
+        text:
+          'This applies to **every month, past and present** \u2014 it is not a change that starts from today. Unticking a team can therefore change Overall Ratings you have already reviewed for that team, including in months you have signed off. Tick the team again and everything comes straight back.',
+      },
+      {
+        type: 'p',
+        text:
+          'The **Teams** column in the table shows the result at a glance: "All teams", or "4 of 6 teams" \u2014 hover it to see which teams the metric does not apply to.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text:
+          '**Teams** and **Active** do different jobs. Unticking a team removes the metric for that team only. Unticking **Active** retires the metric for everyone, on every team.',
       },
     ],
   },

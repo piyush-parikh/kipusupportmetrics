@@ -141,6 +141,20 @@ publish to `main` → mark `[✅]`. Counts as of this writing: **14 not started,
 
 ### Significant
 
+0. **A metric can be made "not applicable" to chosen teams (APT-155, Nov 2026).**
+   The Metrics page now carries a **Teams** checklist in Add Metric and Edit Metric.
+   Unticking a team records that pair in `public.metrics_group_metric_exclusions`
+   (one row = this metric does not apply to this team; no rows = applies everywhere).
+   Reading is open to anyone signed in with a role; only Admins may change it. The
+   scorecard view `metrics_vw_ab_scorecard` already leaves out rows for an excluded
+   pair, so ratings, On Track counts and the leaderboards follow it with no app
+   involvement; the app reads the same table only so that metric lists built from the
+   **definitions** — the empty placeholder rows and columns for metrics with no data —
+   agree, which is what `src/lib/metricApplicability.js` decides. It applies to **every
+   month, past and present**, so unticking a team changes Overall Ratings already
+   reviewed for that team; ticking it again restores them exactly. Staging and
+   production share one database, so a change made while testing is live at once.
+
 1. **Login exists on staging, but the database is not locked yet (APT-149, Nov 2026).**
    Until November 2026 there was no authentication of any kind. Sign-in is now built and
    on **staging**: email + password at `/login`, accounts created by an administrator in
