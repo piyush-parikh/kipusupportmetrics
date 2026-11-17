@@ -2,7 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   getTeams, getAgents, getAllAgents,
   getAllMetricDefinitions, getScorecard, getScorecardYear, getSummary, getActiveGoals,
+  getMetricExclusions,
 } from '../lib/api'
+import {
+  buildExclusionIndex, filterMetricsForTeams, EMPTY_EXCLUSIONS,
+} from '../lib/metricApplicability'
 import { formatValue, statusClass, statusLabel, ratingClass, recentMonths, computeRating } from '../lib/format'
 import { toMessage } from '../lib/errors'
 import {
@@ -90,13 +94,20 @@ function computeAgentPeriodMetrics(agentId, periodMonths, yearDetail, metrics) {
 }
 
 // View rows are the primary source; inactive definition keys are excluded.
-function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
+// APT-155: teamIds + exclusions keep metrics that do not apply to the team on
+// screen out of the fallback list, so no empty row is drawn for a metric that
+// team does not have. Rows from the scorecard view are already correct (the
+// view omits excluded pairs), so a metric with real data is still always shown.
+function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set(), teamIds = [], exclusions = EMPTY_EXCLUSIONS) {
+  const idByKey = {}
+  fallbackDefs.forEach((d) => { if (d.metric_key) idByKey[d.metric_key] = d.id })
   const seen = new Set()
   const list = []
   viewRows.forEach((r) => {
     if (!seen.has(r.metric_key) && !inactiveKeys.has(r.metric_key)) {
       seen.add(r.metric_key)
       list.push({
+        id: idByKey[r.metric_key],
         metric_key: r.metric_key,
         metric_name: r.metric_name,
         unit_type: r.unit_type,
@@ -106,7 +117,7 @@ function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
       })
     }
   })
-  fallbackDefs.forEach((m) => {
+  filterMetricsForTeams(fallbackDefs, teamIds, exclusions).forEach((m) => {
     if (!seen.has(m.metric_key)) list.push({ ...m, display_order: m.display_order ?? 999 })
   })
   return list.sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
@@ -184,6 +195,8 @@ export default function TeamDashboard() {
   const [teams, setTeams]   = useState([])
   const [agents, setAgents] = useState([])
   const [allDefs, setAllDefs] = useState([])
+  // APT-155: stored "this metric does not apply to this team" choices
+  const [exclusionRows, setExclusionRows] = useState([])
 
   const [teamId, setTeamId]         = useState(() => loadPref('ktp_td_team', ''))
   const [search, setSearch]         = useState('')
@@ -211,10 +224,11 @@ export default function TeamDashboard() {
 
   // APT-65: Load all defs (active + inactive); default to first team only if no saved pref
   useEffect(() => {
-    Promise.all([getTeams(), getAllMetricDefinitions()])
-      .then(([t, m]) => {
+    Promise.all([getTeams(), getAllMetricDefinitions(), getMetricExclusions()])
+      .then(([t, m, exclusions]) => {
         setTeams(t)
         setAllDefs(m)
+        setExclusionRows(exclusions)
         const saved = loadPref('ktp_td_team', '')
         if (!saved && t.length > 0) setTeamId(String(t[0].id))
       })
@@ -273,9 +287,33 @@ export default function TeamDashboard() {
   const metricDefs = useMemo(() => allDefs.filter((d) => d.active), [allDefs])
   const inactiveKeys = useMemo(() => new Set(allDefs.filter((d) => !d.active).map((d) => d.metric_key)), [allDefs])
 
+  // APT-155: the teams whose rules decide which metrics belong on screen. The
+  // page always has a team chosen; should none be chosen, a metric is kept
+  // when it still applies to at least one team in view.
+  const exclusionIndex = useMemo(() => buildExclusionIndex(exclusionRows), [exclusionRows])
+  const applicabilityTeamIds = useMemo(
+    () => (teamId ? [teamId] : teams.map((t) => t.id)),
+    [teamId, teams]
+  )
+
   // Build display metric lists with inactiveKeys filter
-  const allMetrics    = useMemo(() => buildMetricList(monthDetail, metricDefs, inactiveKeys), [monthDetail, metricDefs, inactiveKeys])
-  const rollupMetrics = useMemo(() => buildMetricList(yearDetail,  metricDefs, inactiveKeys), [yearDetail,  metricDefs, inactiveKeys])
+  // APT-155: and without metrics that do not apply to the team on screen —
+  // allMetrics feeds the monthly matrix, rollupMetrics the Quarterly and
+  // Half-Year tables.
+  const allMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
+  const rollupMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
 
   // agentId → metricKey → scorecard row
   const detailByAgent = useMemo(() => {

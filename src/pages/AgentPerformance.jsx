@@ -7,7 +7,11 @@ import {
   getAgentTeamAssignments,
   getAdjustments, upsertAdjustment, deleteAdjustment,
   getAllNotesVisible, getAppUsers,
+  getMetricExclusions,
 } from '../lib/api'
+import {
+  buildExclusionIndex, filterMetricsForTeams, EMPTY_EXCLUSIONS,
+} from '../lib/metricApplicability'
 import { formatValue, statusLabel, statusClass, ratingClass, ratingIcon, computeRating } from '../lib/format'
 import Modal from '../components/Modal'
 import { rowsToAdjustments, adjustmentToRow } from '../lib/adjustmentRows'
@@ -111,13 +115,21 @@ function mergeMetrics(configuredList, viewRows) {
 
 // Build display metric list from view rows (primary) + metricDefs (fallback for no-data rows).
 // inactiveKeys: Set of metric_key strings to skip from view rows.
-function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
+// APT-155: teamIds + exclusions keep metrics that do not apply to the team(s)
+// in view out of the fallback list, so no placeholder row (and no Adjust
+// button) is drawn for a metric that team does not have. Rows that came from
+// the scorecard view are already correct — the view omits excluded pairs — so
+// they are left alone, and a metric with real data is still always shown.
+function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set(), teamIds = [], exclusions = EMPTY_EXCLUSIONS) {
+  const idByKey = {}
+  fallbackDefs.forEach((d) => { if (d.metric_key) idByKey[d.metric_key] = d.id })
   const seen = new Set()
   const list = []
   viewRows.forEach((r) => {
     if (!seen.has(r.metric_key) && !inactiveKeys.has(r.metric_key)) {
       seen.add(r.metric_key)
       list.push({
+        id: idByKey[r.metric_key],
         metric_key: r.metric_key,
         metric_name: r.metric_name,
         unit_type: r.unit_type,
@@ -127,7 +139,7 @@ function buildMetricList(viewRows, fallbackDefs, inactiveKeys = new Set()) {
       })
     }
   })
-  fallbackDefs.forEach((m) => {
+  filterMetricsForTeams(fallbackDefs, teamIds, exclusions).forEach((m) => {
     if (!seen.has(m.metric_key)) list.push({ ...m, display_order: m.display_order ?? 999 })
   })
   return list.sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
@@ -373,6 +385,8 @@ export default function AgentPerformance() {
   const [teams, setTeams]   = useState([])
   const [agents, setAgents] = useState([])
   const [allDefs, setAllDefs] = useState([])
+  // APT-155: stored "this metric does not apply to this team" choices
+  const [exclusionRows, setExclusionRows] = useState([])
 
   // APT-61: Persistent filters
   const [teamId, setTeamId]   = useState(() => loadPref('ktp_ap_team', ''))
@@ -423,14 +437,29 @@ export default function AgentPerformance() {
   useEffect(() => savePref('ktp_ap_view', viewMode), [viewMode])
 
   // APT-65: Load all metric definitions (active + inactive)
+  // APT-155: and which metrics do not apply to which teams
   useEffect(() => {
     getTeams().then(setTeams).catch((e) => setError(toMessage(e)))
-    getAllMetricDefinitions().then(setAllDefs).catch((e) => setError(toMessage(e)))
+    Promise.all([getAllMetricDefinitions(), getMetricExclusions()])
+      .then(([defs, exclusions]) => { setAllDefs(defs); setExclusionRows(exclusions) })
+      .catch((e) => setError(toMessage(e)))
   }, [])
 
   // APT-65: Derive active metricDefs and inactiveKeys
   const metricDefs = useMemo(() => allDefs.filter((d) => d.active), [allDefs])
   const inactiveKeys = useMemo(() => new Set(allDefs.filter((d) => !d.active).map((d) => d.metric_key)), [allDefs])
+
+  // APT-155: the teams whose rules decide which metrics this agent should see.
+  // The Team filter wins when one is chosen; otherwise the agent's own current
+  // team assignments are used, and an agent with no team is not filtered at all.
+  const exclusionIndex = useMemo(() => buildExclusionIndex(exclusionRows), [exclusionRows])
+  const applicabilityTeamIds = useMemo(() => {
+    if (teamId) return [teamId]
+    return agentTeams
+      .filter((t) => t.active !== false)
+      .map((t) => t.group_id)
+      .filter((id) => id !== null && id !== undefined)
+  }, [teamId, agentTeams])
 
   // APT-78/79: Visible agents in dropdown (filter inactive unless toggled)
   const visibleAgents = useMemo(
@@ -591,8 +620,23 @@ export default function AgentPerformance() {
   }
 
   // APT-65: Build display metric list with inactiveKeys filter
-  const allMetrics    = useMemo(() => buildMetricList(monthDetail, metricDefs, inactiveKeys), [monthDetail, metricDefs, inactiveKeys])
-  const rollupMetrics = useMemo(() => buildMetricList(yearDetail,  metricDefs, inactiveKeys), [yearDetail,  metricDefs, inactiveKeys])
+  // APT-155: and drop metrics that do not apply to this agent's team(s). Both
+  // lists feed every tab, so the monthly table, the Quarterly and Half-Year
+  // tables, Year to Date and the Trend table all follow the same selection.
+  const allMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [monthDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
+  const rollupMetrics = useMemo(
+    () => filterMetricsForTeams(
+      buildMetricList(yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex),
+      applicabilityTeamIds, exclusionIndex,
+    ),
+    [yearDetail, metricDefs, inactiveKeys, applicabilityTeamIds, exclusionIndex]
+  )
 
   // Merge produces a row for every display metric (placeholder when agent has no data for it)
   const mergedRows = mergeMetrics(allMetrics, monthDetail)
