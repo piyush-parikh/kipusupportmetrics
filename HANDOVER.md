@@ -88,6 +88,7 @@ Zendesk / other sources  →  [UNKNOWN LOADER — outside Supabase, tool & owner
 | Admin screens | `src/pages/admin/` — agents, teams, team assignments, metrics, goals, notes, attendance codes |
 | Any database query | `src/lib/api.js` |
 | Number formatting, ratings | `src/lib/format.js` (incl. `NEW_RATING_BANDS_FROM = '2026-07'`) |
+| The Team Dashboard's Supervisor / Team Lead filter | `src/lib/supervisorFilter.js` (pure, tested). It is applied in one place — `displayAgents` in `LeaderDashboard.jsx` — which every card and table on that page derives from, so all of them follow one rule (APT-154) |
 | Help articles | `src/lib/helpArticles.js`; images in `public/help-images/` |
 | Menu / navigation | `src/components/Layout.jsx` |
 | Attendance codes (LOA etc.) | **Not in code** — they're database records, edited via the Attendance Codes screen in the app. Only the cell colours are in code (`CODE_COLORS` in `AttendanceEntry.jsx`) |
