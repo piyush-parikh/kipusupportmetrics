@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { planGoalChange } from './goalPlan'
 import { monthToDate } from './dates'
 import { diffExclusions } from './metricApplicability'
+import { isMissingColumnError } from './passwordHelpers'
 
 // Convert YYYY-MM → YYYY-MM-01 for date columns in Postgres.
 // Lenient, and used by the older queries (scorecards, goals, attendance) where
@@ -15,18 +16,47 @@ function toDateParam(month) {
 // ── Access (app_users) ────────────────────────────────────────────────────────
 
 // APT-149: the signed-in person's role, 'admin' or 'user'. A person can read
-// only their own row, so this returns null when they have not been given
+// only their own row, so role comes back null when they have not been given
 // access yet — which the app shows as a "No access" screen rather than an
 // error. Throws on a real failure so the caller can offer a Retry.
+//
+// APT-156: the same row also says whether they still have the starting
+// password an administrator gave them and must choose their own. Both are read
+// in one request, so the app never has a moment where it knows one but not the
+// other. Should the column be missing in some environment, the role is read on
+// its own and the flag is simply false — nobody is locked out by that.
 export async function getMyRole(userId) {
-  if (!userId) return null
+  if (!userId) return { role: null, mustChangePassword: false }
+
   const { data, error } = await supabase
     .from('app_users')
-    .select('role')
+    .select('role, must_change_password')
     .eq('user_id', userId)
     .maybeSingle()
+
+  if (error) {
+    if (!isMissingColumnError(error)) throw error
+    const fallback = await supabase
+      .from('app_users')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (fallback.error) throw fallback.error
+    return { role: fallback.data?.role ?? null, mustChangePassword: false }
+  }
+
+  return {
+    role: data?.role ?? null,
+    mustChangePassword: data?.must_change_password === true,
+  }
+}
+
+// APT-156: clears the caller's own "must choose a password" flag. The database
+// function only ever touches the signed-in person's row; nobody can edit this
+// table directly.
+export async function markPasswordChanged() {
+  const { error } = await supabase.rpc('mark_password_changed')
   if (error) throw error
-  return data?.role ?? null
 }
 
 // ── Teams (metrics_groups where group_type='team') ────────────────────────────
