@@ -66,7 +66,9 @@ export async function upsertTeam(row) {
 
 // ── Agents (metrics_agents) ───────────────────────────────────────────────────
 
-// Active agents, optionally filtered by team via assignments
+// Active agents, optionally filtered by team via assignments.
+// APT-154: supervisor_id is included so the Team Dashboard can filter by
+// Supervisor / Team Lead without needing a second query.
 export async function getAgents({ groupId, activeOnly = true } = {}) {
   if (groupId) {
     const { data: assignments, error: ae } = await supabase
@@ -79,7 +81,7 @@ export async function getAgents({ groupId, activeOnly = true } = {}) {
     const ids = assignments.map((a) => a.agent_id)
     let q = supabase
       .from('metrics_agents')
-      .select('id, agent_name, active, role, hire_date, go_live_date, employment_end_date, notes')
+      .select('id, agent_name, active, role, supervisor_id, hire_date, go_live_date, employment_end_date, notes')
       .in('id', ids)
       .order('agent_name')
     if (activeOnly) q = q.eq('active', true)
@@ -89,7 +91,7 @@ export async function getAgents({ groupId, activeOnly = true } = {}) {
   }
   let query = supabase
     .from('metrics_agents')
-    .select('id, agent_name, active, role, hire_date, go_live_date, employment_end_date, notes')
+    .select('id, agent_name, active, role, supervisor_id, hire_date, go_live_date, employment_end_date, notes')
     .order('agent_name')
   if (activeOnly) query = query.eq('active', true)
   const { data, error } = await query

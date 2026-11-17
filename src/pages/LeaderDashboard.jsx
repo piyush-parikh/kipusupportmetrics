@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  getTeams, getAgents,
+  getTeams, getAgents, getAllAgents,
   getAllMetricDefinitions, getScorecard, getScorecardYear, getSummary, getActiveGoals,
 } from '../lib/api'
 import { formatValue, statusClass, statusLabel, ratingClass, recentMonths, computeRating } from '../lib/format'
 import { toMessage } from '../lib/errors'
+import {
+  buildSupervisorOptions, applySupervisorFilter, resolveSupervisorChoice, ALL as SUPERVISOR_ALL,
+} from '../lib/supervisorFilter'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -187,6 +190,9 @@ export default function TeamDashboard() {
   const [month, setMonth]           = useState(() => loadPref('ktp_td_month', monthOptions[0]?.value ?? ''))
   const [rollupYear, setRollupYear] = useState(() => loadPref('ktp_td_year', String(new Date().getFullYear())))
   const [showInactive, setShowInactive] = useState(false)
+  // APT-154: filter the whole page down to one Supervisor / Team Lead's agents
+  const [supervisor, setSupervisor] = useState(() => loadPref('ktp_td_supervisor', SUPERVISOR_ALL))
+  const [directory, setDirectory]   = useState([])
   const [selectedQ, setSelectedQ]   = useState('all')
 
   const [monthDetail, setMonthDetail] = useState([])
@@ -201,6 +207,7 @@ export default function TeamDashboard() {
   useEffect(() => savePref('ktp_td_team', teamId), [teamId])
   useEffect(() => savePref('ktp_td_month', month), [month])
   useEffect(() => savePref('ktp_td_year', rollupYear), [rollupYear])
+  useEffect(() => savePref('ktp_td_supervisor', supervisor), [supervisor])
 
   // APT-65: Load all defs (active + inactive); default to first team only if no saved pref
   useEffect(() => {
@@ -222,6 +229,13 @@ export default function TeamDashboard() {
       .then(setAgents)
       .catch((e) => setError(toMessage(e)))
   }, [teamId])
+
+  // APT-154: every agent, used only to put a name and role against a
+  // supervisor_id — a supervisor is often not assigned to the team they look
+  // after, so the team's own list cannot name them.
+  useEffect(() => {
+    getAllAgents().then(setDirectory).catch(() => setDirectory([]))
+  }, [])
 
   const agentIds = useMemo(() => agents.map((a) => a.id), [agents])
 
@@ -273,12 +287,32 @@ export default function TeamDashboard() {
     return map
   }, [monthDetail])
 
-  // APT-78/79: Search + inactive filter
+  // APT-154: the dropdown offers whoever supervises someone on this team.
+  // Built from the team's agents and the Show inactive setting only — not from
+  // Search or the supervisor choice itself, so the list stays steady while
+  // typing and a choice cannot remove its own option.
+  const supervisorOptions = useMemo(
+    () => buildSupervisorOptions(agents.filter((a) => showInactive || a.active !== false), directory),
+    [agents, showInactive, directory]
+  )
+
+  // A saved or current choice only survives while it is still on offer
+  const activeSupervisor = useMemo(
+    () => resolveSupervisorChoice(supervisor, supervisorOptions),
+    [supervisor, supervisorOptions]
+  )
+
+  // APT-78/79: Search + inactive filter. APT-154 adds the supervisor filter
+  // here, at the single root every card and table on this page derives from,
+  // so all of them follow one rule.
   const displayAgents = useMemo(
-    () => agents
-      .filter((a) => showInactive || a.active !== false)
-      .filter((a) => !search || a.agent_name.toLowerCase().includes(search.toLowerCase())),
-    [agents, search, showInactive]
+    () => applySupervisorFilter(
+      agents
+        .filter((a) => showInactive || a.active !== false)
+        .filter((a) => !search || a.agent_name.toLowerCase().includes(search.toLowerCase())),
+      activeSupervisor,
+    ),
+    [agents, search, showInactive, activeSupervisor]
   )
 
   // Only show agents who have at least one actual value in the selected month
@@ -381,6 +415,17 @@ export default function TeamDashboard() {
           <select className="filter-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">Select Team</option>
             {teams.map((t) => <option key={t.id} value={t.id}>{t.group_name}</option>)}
+          </select>
+        </div>
+        <div className="filter-group">
+          <label className="filter-label">Supervisor / Team Lead</label>
+          <select
+            className="filter-select"
+            style={{ minWidth: 170 }}
+            value={activeSupervisor}
+            onChange={(e) => setSupervisor(e.target.value)}
+          >
+            {supervisorOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
         <div className="filter-group">
