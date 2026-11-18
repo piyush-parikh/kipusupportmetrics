@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
-import { getMyRole } from './api'
+import { getMyRole, markPasswordChanged } from './api'
 import { describeAuthError } from './authHelpers'
+import { describePasswordUpdateError } from './passwordHelpers'
 import { describeError, setSessionExpiredHandler } from './errors'
 import { AuthCtx } from './useAuth'
 
@@ -24,7 +25,9 @@ export function AuthProvider({ children }) {
   // One record of the last answered role request. Keeping the user id and the
   // nonce alongside it lets "still loading" be derived rather than stored, so
   // nothing has to be set synchronously inside an effect.
-  const [roleState, setRoleState] = useState({ userId: null, role: null, error: '', nonce: 0 })
+  const [roleState, setRoleState] = useState({
+    userId: null, role: null, mustChangePassword: false, error: '', nonce: 0,
+  })
 
   useEffect(() => {
     let active = true
@@ -65,10 +68,24 @@ export function AuthProvider({ children }) {
     let active = true
     getMyRole(userId)
       .then((r) => {
-        if (active) setRoleState({ userId, role: r ?? null, error: '', nonce: roleNonce })
+        if (!active) return
+        setRoleState({
+          userId,
+          role: r?.role ?? null,
+          mustChangePassword: r?.mustChangePassword === true,
+          error: '',
+          nonce: roleNonce,
+        })
       })
       .catch((e) => {
-        if (active) setRoleState({ userId, role: null, error: describeError(e).message, nonce: roleNonce })
+        if (!active) return
+        setRoleState({
+          userId,
+          role: null,
+          mustChangePassword: false,
+          error: describeError(e).message,
+          nonce: roleNonce,
+        })
       })
     return () => { active = false }
   }, [userId, bootstrapped, roleNonce])
@@ -77,6 +94,9 @@ export function AuthProvider({ children }) {
   const settled = roleState.userId === userId && roleState.nonce === roleNonce
   const role = userId && settled ? roleState.role : null
   const roleError = userId && settled ? roleState.error : ''
+  // APT-156: false while the role is still on its way, and for anyone with no
+  // access at all — so the forced screen can never flash up for them.
+  const mustChangePassword = !!(userId && settled && role && roleState.mustChangePassword)
   const roleLoading = !!userId && !settled
 
   const status = !bootstrapped ? 'loading'
@@ -100,6 +120,60 @@ export function AuthProvider({ children }) {
 
   const refreshRole = useCallback(() => setRoleNonce((n) => n + 1), [])
 
+  // APT-156: someone changes their own password here. No email is involved and
+  // no administrator is needed.
+  //
+  // Neither password is stored, logged or put anywhere outside this function —
+  // they arrive from the form's own state and are handed straight to Supabase.
+  //
+  // Step 1 proves they know the password they have now (the update itself does
+  // not ask) and, as a side effect, leaves the session freshly signed in,
+  // which is the state the update expects. That sign-in raises a SIGNED_IN
+  // event; the listener above records the session and nothing else, and since
+  // the user id has not changed the role is not fetched again, so no loading
+  // screen appears and no redirect is triggered.
+  const changePassword = useCallback(async (current, next) => {
+    const signedInEmail = session?.user?.email ?? ''
+    if (!signedInEmail) {
+      return { ok: false, message: 'Your sign-in has expired. Please sign in again.' }
+    }
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: signedInEmail,
+      password: current,
+    })
+    if (reauthError) {
+      // Deliberately says nothing beyond this, whatever the real reason was
+      return { ok: false, field: 'current', message: 'Your current password is incorrect.' }
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: next })
+    if (updateError) {
+      return { ok: false, message: describePasswordUpdateError(updateError) }
+    }
+
+    // The password is changed by this point, so a failure to record it must
+    // not be reported as a failure to change it.
+    try {
+      await markPasswordChanged()
+    } catch {
+      return {
+        ok: true,
+        warning: 'Your password was changed, but we could not record it. You may be asked again.',
+      }
+    }
+
+    // The flag is now clear in the database. Patching the answer already in
+    // hand keeps the page as it is; asking for the role afresh would put the
+    // whole app behind its loading screen and wipe the confirmation off the
+    // screen mid-sentence. It is read from the database again on the next
+    // sign-in or page load as usual.
+    setRoleState((prev) => (
+      prev.userId === userId ? { ...prev, mustChangePassword: false } : prev
+    ))
+    return { ok: true }
+  }, [session, userId])
+
   // Any page that hits an expired sign-in signs out through this, and the
   // guard then sends the person to /login.
   useEffect(() => {
@@ -115,10 +189,15 @@ export function AuthProvider({ children }) {
     isAdmin: role === 'admin',
     status,
     roleError,
+    mustChangePassword,
     signIn,
     signOut,
     refreshRole,
-  }), [session, role, status, roleError, signIn, signOut, refreshRole])
+    changePassword,
+  }), [
+    session, role, status, roleError, mustChangePassword,
+    signIn, signOut, refreshRole, changePassword,
+  ])
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>
 }

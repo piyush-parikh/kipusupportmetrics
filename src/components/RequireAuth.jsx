@@ -1,11 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 
+export const CHANGE_PASSWORD_PATH = '/change-password'
+
 // APT-149: everything except /login goes through here.
 // The screens below deliberately render without the sidebar — someone who is
 // not signed in, or has no access, should not see the menu.
 export default function RequireAuth({ children }) {
-  const { status, role, email, roleError, signOut, refreshRole } = useAuth()
+  const { status, role, email, roleError, mustChangePassword, signOut, refreshRole } = useAuth()
   const location = useLocation()
 
   if (status === 'loading') {
@@ -52,6 +54,15 @@ export default function RequireAuth({ children }) {
         </div>
       </div>
     )
+  }
+
+  // APT-156: still on the starting password an administrator gave them, so
+  // every other page waits until they have chosen their own. This sits after
+  // the checks above, so Loading, the sign-in redirect, the access-retry
+  // screen and No access all keep their precedence. The change-password page
+  // itself is of course reachable, which is what keeps this from looping.
+  if (mustChangePassword && location.pathname !== CHANGE_PASSWORD_PATH) {
+    return <Navigate to={CHANGE_PASSWORD_PATH} replace />
   }
 
   return children

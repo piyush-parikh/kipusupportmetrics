@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../lib/useAuth'
 
@@ -100,7 +100,9 @@ export default function Layout({ children }) {
           <div className="sidebar-user">
             <span className="sidebar-user-email" title={email}>{email}</span>
             <span className="sidebar-user-role">{isAdmin ? 'Admin' : 'User'}</span>
-            <div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {/* APT-156: change your own password, no administrator needed */}
+              <Link className="sidebar-signout" to="/change-password">Change password</Link>
               <button className="sidebar-signout" onClick={signOut}>Sign out</button>
             </div>
           </div>
